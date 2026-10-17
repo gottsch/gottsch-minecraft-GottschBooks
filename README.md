@@ -30,6 +30,24 @@ side="BOTH"
 runs, `type="optional"` with the same range, and touch library classes only after
 `ModList.get().isLoaded("gottschbooks")`.
 
+## Registering a book
+
+Text and art are client assets, under `assets/<ns>/books/<book>/`. The server also needs to know the book
+exists, so that it counts toward advancements:
+
+- `data/<ns>/gottschbooks/book/<book>.json`: `{}` (or `{"disabled": true}` to switch one off)
+- optional tags: `data/<ns>/tags/gottschbooks/book/<tag>.json`
+
+Advancements use the `gottschbooks:book_read` trigger:
+
+```json
+{ "trigger": "gottschbooks:book_read",
+  "conditions": { "book": "ns:id", "books": "#ns:tag", "all_in": "ns" } }
+```
+
+All three conditions are optional. `books` and `all_in` need every enabled book in the tag or namespace to have
+been read.
+
 ## Versioning
 
 Semver. Every 1.x release stays backwards compatible with books and API calls written for 1.0;

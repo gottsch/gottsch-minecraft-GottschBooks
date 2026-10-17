@@ -17,9 +17,15 @@
  */
 package mod.gottsch.neo.gottschbooks;
 
+import mod.gottsch.neo.gottschbooks.api.BookDef;
+import mod.gottsch.neo.gottschbooks.api.GottschBooksRegistries;
+import mod.gottsch.neo.gottschbooks.core.BookReading;
+import mod.gottsch.neo.gottschbooks.core.GottschBooksComponents;
+import mod.gottsch.neo.gottschbooks.core.advancement.GottschBooksCriteria;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
+import net.neoforged.neoforge.registries.DataPackRegistryEvent;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -35,6 +41,14 @@ public class GottschBooks {
     public static final Logger LOGGER = LogManager.getLogger(MOD_ID);
 
     public GottschBooks(IEventBus modEventBus, ModContainer modContainer) {
-        LOGGER.info("Gottsch Books loading");
+        GottschBooksComponents.register(modEventBus);
+        BookReading.register(modEventBus);
+        GottschBooksCriteria.register(modEventBus);
+        modEventBus.addListener(GottschBooks::onNewDataPackRegistries);
+    }
+
+    private static void onNewDataPackRegistries(DataPackRegistryEvent.NewRegistry event) {
+        // synced, so clients have the entries (and tags) too
+        event.dataPackRegistry(GottschBooksRegistries.BOOK, BookDef.CODEC, BookDef.CODEC);
     }
 }
