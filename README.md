@@ -30,10 +30,39 @@ side="BOTH"
 runs, `type="optional"` with the same range, and touch library classes only after
 `ModList.get().isLoaded("gottschbooks")`.
 
+## Writing a book
+
+A lore book is one Markdown file per language, at `assets/<ns>/books/<book>/<locale>/text.md`. A language the book
+doesn't have falls back to `en_us`:
+
+```markdown
+---
+title: The Tidewalker's Log
+author: Selene Tidewalker
+---
+
+![](item:magictreasures:white_pearl)
+
+The first section. A blank line starts a new paragraph; *italic*, **bold**, {gold}gold{} and {#d4a017}hex{}.
+
+> [An editor's note, in grey italics.]
+
+---
+
+The second section, after an ornament.
+```
+
+An illustration is `![caption](scheme:ns:id)` on a line of its own. With no caption, the item's name is shown.
+`item` is built in; a mod adds more with `Illustrations.register` (Magic Treasures adds `preset`). An optional
+`assets/<ns>/books/<book>/book.md` holding `skin: <ns>:<folder>` points the book at its own `cover.png`, `page.png`
+and `ornament.png` (32x32 nine-slices, and a 21x5 ornament).
+
+Open a book by right-clicking a `BookItem` (a stack with the `gottschbooks:book` component), or from client code with
+`GottschBooksClient.open(book, icon)`.
+
 ## Registering a book
 
-Text and art are client assets, under `assets/<ns>/books/<book>/`. The server also needs to know the book
-exists, so that it counts toward advancements:
+The server also needs to know that the book exists, so that it counts toward advancements:
 
 - `data/<ns>/gottschbooks/book/<book>.json`: `{}` (or `{"disabled": true}` to switch one off)
 - optional tags: `data/<ns>/tags/gottschbooks/book/<tag>.json`
