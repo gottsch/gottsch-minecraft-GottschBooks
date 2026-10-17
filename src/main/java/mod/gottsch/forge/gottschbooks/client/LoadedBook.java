@@ -54,6 +54,11 @@ public record LoadedBook(ResourceLocation id, BookText meta, Map<String, Map<Str
         return Optional.ofNullable(text != null ? text : byLocale.values().iterator().next());
     }
 
+    /** a manual ({@code mode: manual} in book.md), rather than a lore book */
+    public boolean isManual() {
+        return meta.get("mode").map(mode -> mode.equalsIgnoreCase("manual")).orElse(false);
+    }
+
     /** the folder holding the art ({@code cover.png}, {@code page.png}, {@code ornament.png}); {@code skin:} in book.md */
     public ResourceLocation skin() {
         return meta.get("skin").map(ResourceLocation::tryParse).orElse(DEFAULT_SKIN);

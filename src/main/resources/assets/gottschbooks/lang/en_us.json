@@ -1,4 +1,8 @@
 {
   "gottschbooks.book.author": "by %s",
-  "gottschbooks.book.missing": "This book's text is missing: %s"
+  "gottschbooks.book.missing": "This book's text is missing: %s",
+  "gottschbooks.book.back": "< Back",
+  "gottschbooks.book.contents": "Contents",
+  "gottschbooks.command.open": "Opened %s for %s player(s)",
+  "item.gottschbooks.book": "Book"
 }

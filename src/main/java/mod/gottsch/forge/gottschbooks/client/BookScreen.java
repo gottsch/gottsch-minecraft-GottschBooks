@@ -17,37 +17,59 @@
  */
 package mod.gottsch.forge.gottschbooks.client;
 
+import mod.gottsch.forge.gottschbooks.GottschBooks;
 import mod.gottsch.forge.gottschbooks.api.Illustrations;
 import mod.gottsch.forge.gottschbooks.core.text.Block;
 import mod.gottsch.forge.gottschbooks.core.text.BookText;
+import mod.gottsch.forge.gottschbooks.core.text.Inline;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.client.gui.screens.inventory.PageButton;
+import net.minecraft.client.resources.sounds.SimpleSoundInstance;
+import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.Style;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.sounds.SoundEvents;
 import net.minecraft.util.FormattedCharSequence;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.crafting.Ingredient;
+import net.minecraft.world.item.crafting.Recipe;
+import net.minecraft.world.item.crafting.ShapedRecipe;
 import org.lwjgl.glfw.GLFW;
 
+import javax.annotation.Nullable;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
- * The book reader, lore-book mode: an open book sized to the window, two pages side by side (one on a narrow window).
+ * The book reader: an open book sized to the window, two pages side by side (one on a narrow window).
  * <p>
  * The text is flowed onto as many pages as the window needs, so a big window shows more per page and no text, in any
- * language, can run off a page. {@code ---} sections are separated by an ornament, which never ends a page and always
- * has two lines of its section after it. The first page opens with the book's icon, title and author.
+ * language, can run off a page. {@code ---} sections are separated by an ornament; an ornament or a heading never
+ * ends a page and always has two lines after it. Illustrations and spotlights are items drawn larger (kept to whole
+ * screen pixels) with the item's tooltip on hover. {@code >} paragraphs are editor's notes: italic and grey.
  * <p>
- * Illustrations are items drawn at about 1.5x (kept to whole screen pixels), captioned with the caption or, without
- * one, the item's name; hovering shows the item's tooltip. {@code >} paragraphs are editor's notes: italic and grey.
- * The reader remembers the section you were on for each book until the game closes.
- * <p>
+ * Two modes, from the book's {@code book.md}:
+ * <ul>
+ *     <li><b>Lore book</b>: one text, opening on a title page (icon, title, author), turned page by page. The reader
+ *     remembers the section you were on for each book until the game closes.</li>
+ *     <li><b>Manual</b> ({@link Manual}): opens on the contents (the landing text, then each category's entries);
+ *     a click opens an entry, {@code [text](entry:id#anchor)} links jump between entries, and Back and Contents sit
+ *     above the book. Entries can show {@code spotlight}, {@code recipe}, {@code image} and {@code entity}
+ *     blocks.</li>
+ * </ul>
  * Moved from Magic Treasures' {@code LoreBookScreen}.
  *
  * @author Mark Gottschling on 10/17/2026
@@ -58,7 +80,11 @@ public class BookScreen extends Screen {
 
     private static final int INK = 0xFF3B2A1A;
     private static final int NOTE = 0xFF7A6650;
+    private static final int LINK = 0xFF1E4FA0;
+    private static final int SLOT = 0x30000000;
     private static final int LINE_H = 10;
+    private static final int ROW_H = 18;
+    private static final int LIST_GAP = 3;
     private static final int ORNAMENT_SLOT = 16;
     private static final int MARGIN = 12;
     private static final int MAX_BOOK_W = 520, MAX_BOOK_H = 340;
@@ -70,46 +96,98 @@ public class BookScreen extends Screen {
     /** illustrations aim for this, rounded so each item pixel covers whole screen pixels (see {@link #init}) */
     private static final double ILLUSTRATION_TARGET = 1.5;
 
-    /** the section each book was left open at, for this game session */
-    private static final Map<ResourceLocation, Integer> LAST_SECTION = new HashMap<>();
+    /** where each book was left, for this game session: a lore book's section, a manual's entry and section */
+    private static final Map<ResourceLocation, Place> LAST_PLACE = new HashMap<>();
+
+    /** an entry (null for a manual's contents) and the section within it */
+    private record Place(@Nullable String entry, int section) {}
 
     private final ResourceLocation bookId;
     private final ItemStack icon;
-    private final Optional<Component> author;
-    /** the text's blocks, less a level-1 heading used as the title */
-    private final List<Block> blocks;
     private final ResourceLocation cover, page, ornament;
+    // lore book
+    private final Optional<Component> author;
+    private final List<Block> loreBlocks;
+    // manual
+    @Nullable
+    private final Manual manual;
+    /** the entry being read; null on the contents */
+    @Nullable
+    private String entry;
+    private final Deque<Place> history = new ArrayDeque<>();
+    /** an anchor to open at, once the layout exists */
+    @Nullable
+    private String pendingAnchor;
 
     // layout, recomputed in init() (it runs again when the window is resized)
     private int bookX, bookY, bookW, bookH;
     private boolean spread;
     private int pageW, pageH, textW;
     private float illustrationScale;
+    /** {@code #} and {@code ##} heading text scales, kept to whole screen pixels like the illustrations */
+    private float headingScale1, headingScale2;
     private int illustrationSize;
     private final List<List<Line>> pages = new ArrayList<>();
     private int view;
     private PageButton back, forward;
-    /** where the visible illustrations were drawn this frame, for their tooltips */
-    private final List<Hit> hits = new ArrayList<>();
+    /** where things were drawn this frame, for tooltips and clicks */
+    private final List<ItemHit> itemHits = new ArrayList<>();
+    private final List<LinkHit> linkHits = new ArrayList<>();
+    private final List<TextHit> textHits = new ArrayList<>();
 
-    /** one row of a page: text, a blank, an ornament, a picture, a forced break, or the title block (first page only) */
-    private record Line(Kind kind, FormattedCharSequence text, int color, int section, int height, ItemStack item,
-                        Component caption) {
-        Line(Kind kind, FormattedCharSequence text, int color, int section, int height) {
-            this(kind, text, color, section, height, ItemStack.EMPTY, null);
+    private enum Kind { TEXT, BLANK, ORNAMENT, TITLE, ENTRY_TITLE, ILLUSTRATION, SPOTLIGHT, RECIPE, IMAGE, ENTITY,
+        CATEGORY, LINK_ROW, BREAK, HEADING }
+
+    /** one row of a page */
+    private static final class Line {
+        final Kind kind;
+        final int height;
+        int section;
+        /** height that must follow this line on the same page (headings, ornaments, spotlights) */
+        int keep;
+        FormattedCharSequence text;
+        int color = INK;
+        int indent;
+        String bullet;
+        ItemStack item = ItemStack.EMPTY;
+        Component label;
+        String target;
+        String anchor;
+        /** a heading's text scale, and whether a rule goes under it */
+        float scale = 1F;
+        boolean rule;
+        RecipeView recipe;
+        ImageView image;
+        LivingEntity entity;
+
+        Line(Kind kind, int height, int section) {
+            this.kind = kind;
+            this.height = height;
+            this.section = section;
         }
     }
 
-    private enum Kind { TEXT, BLANK, ORNAMENT, TITLE, ILLUSTRATION, BREAK }
+    private record RecipeView(List<ItemStack[]> grid, ItemStack result) {}
 
-    private record Hit(int x, int y, int size, ItemStack item) {
-        boolean contains(int mx, int my) {
+    private record ImageView(ResourceLocation texture, int texW, int texH, int w, int h) {}
+
+    private record ItemHit(int x, int y, int size, ItemStack item) {
+        boolean contains(double mx, double my) {
             return mx >= x && mx < x + size && my >= y && my < y + size;
         }
     }
 
+    private record LinkHit(int x, int y, int w, int h, String target) {
+        boolean contains(double mx, double my) {
+            return mx >= x && mx < x + w && my >= y && my < y + h;
+        }
+    }
+
+    private record TextHit(int x, int y, FormattedCharSequence text) {}
+
+    /** a lore book */
     public BookScreen(LoadedBook book, BookText text, ItemStack icon) {
-        super(title(book, text));
+        super(loreTitle(book, text));
         this.bookId = book.id();
         this.icon = icon;
         this.author = text.get("author").map(Component::literal);
@@ -117,15 +195,42 @@ public class BookScreen extends Screen {
         if (text.get("title").isEmpty() && !body.isEmpty() && body.get(0) instanceof Block.Heading h && h.level() == 1) {
             body.remove(0);
         }
-        this.blocks = body;
+        this.loreBlocks = body;
+        this.manual = null;
         ResourceLocation skin = book.skin();
         this.cover = art(skin, "cover");
         this.page = art(skin, "page");
         this.ornament = art(skin, "ornament");
     }
 
+    /** a manual, opened at {@code target} ({@code entry} or {@code entry#anchor}), else where it was left */
+    public BookScreen(LoadedBook book, Manual manual, ItemStack icon, Optional<String> target) {
+        super(manual.title());
+        this.bookId = book.id();
+        this.icon = icon;
+        this.author = Optional.empty();
+        this.loreBlocks = List.of();
+        this.manual = manual;
+        ResourceLocation skin = book.skin();
+        this.cover = art(skin, "cover");
+        this.page = art(skin, "page");
+        this.ornament = art(skin, "ornament");
+        if (target.isPresent()) {
+            String[] parts = target.get().split("#", 2);
+            if (manual.entry(parts[0]).isPresent()) {
+                entry = parts[0];
+                pendingAnchor = parts.length > 1 ? parts[1] : null;
+            }
+        } else {
+            Place last = LAST_PLACE.get(bookId);
+            if (last != null && last.entry() != null && manual.entry(last.entry()).isPresent()) {
+                entry = last.entry();
+            }
+        }
+    }
+
     /** {@code title:} in the front matter, else a leading {@code # heading}, else the book's id */
-    private static Component title(LoadedBook book, BookText text) {
+    private static Component loreTitle(LoadedBook book, BookText text) {
         Optional<Component> title = text.get("title").map(Component::literal);
         if (title.isEmpty() && !text.blocks().isEmpty() && text.blocks().get(0) instanceof Block.Heading h && h.level() == 1) {
             title = Optional.of(h.text());
@@ -137,10 +242,14 @@ public class BookScreen extends Screen {
         return skin.withSuffix("/" + name + ".png");
     }
 
+    private boolean isManual() {
+        return manual != null;
+    }
+
     @Override
     protected void init() {
         // where the reader was: the old layout's section, else the remembered one
-        int anchor = pages.isEmpty() ? LAST_SECTION.getOrDefault(bookId, 0) : currentSection();
+        int anchor = pages.isEmpty() ? remembered() : currentSection();
 
         bookW = Math.min(width - 2 * MARGIN, MAX_BOOK_W);
         bookH = Math.min(height - 2 * MARGIN, MAX_BOOK_H);
@@ -159,9 +268,16 @@ public class BookScreen extends Screen {
         double guiScale = minecraft.getWindow().getGuiScale();
         illustrationScale = (float) (Math.max(1, Math.round(ILLUSTRATION_TARGET * guiScale)) / guiScale);
         illustrationSize = (int) Math.ceil(16 * illustrationScale);
+        headingScale1 = (float) (Math.max(1, Math.round(1.5 * guiScale)) / guiScale);
+        headingScale2 = (float) (Math.max(1, Math.round(1.25 * guiScale)) / guiScale);
 
         paginate();
-        view = Math.min(viewOf(pageOfSection(anchor)), lastView());
+        if (pendingAnchor != null) {
+            view = viewOf(pageOfAnchor(pendingAnchor));
+            pendingAnchor = null;
+        } else {
+            view = Math.min(viewOf(pageOfSection(anchor)), lastView());
+        }
 
         int buttonY = bookY + bookH - COVER_BORDER - 16;
         back = addRenderableWidget(new PageButton(bookX + COVER_BORDER + 6, buttonY, false, b -> turn(-1), true));
@@ -169,51 +285,289 @@ public class BookScreen extends Screen {
         updateButtons();
     }
 
-    // ---- layout ----
-
-    /** the blocks as one column of lines; sections are counted by ornaments */
-    private List<Line> flow() {
-        List<Line> flow = new ArrayList<>();
-        flow.add(new Line(Kind.TITLE, null, INK, 0, titleHeight()));
-        int section = 0;
-        boolean textBefore = false;
-        for (Block block : blocks) {
-            if (block instanceof Block.Ornament) {
-                section++;
-                flow.add(new Line(Kind.ORNAMENT, null, INK, section, ORNAMENT_SLOT));
-                textBefore = false;
-            } else if (block instanceof Block.Paragraph p) {
-                addText(flow, p.quote() ? Component.empty().withStyle(ChatFormatting.ITALIC).append(p.text()) : p.text(),
-                        p.quote() ? NOTE : INK, section, textBefore);
-                textBefore = true;
-            } else if (block instanceof Block.Heading h) {
-                addText(flow, Component.empty().withStyle(ChatFormatting.BOLD).append(h.text()), INK, section, textBefore);
-                textBefore = true;
-            } else if (block instanceof Block.Illustration i) {
-                Optional<ItemStack> item = Illustrations.get(i.scheme(), i.id());
-                if (item.isPresent()) {
-                    Component caption = Component.literal(i.caption().isEmpty() ? item.get().getHoverName().getString()
-                            : i.caption()).withStyle(ChatFormatting.ITALIC);
-                    int captionLines = font.split(caption, textW).size();
-                    flow.add(new Line(Kind.ILLUSTRATION, null, NOTE, section,
-                            6 + illustrationSize + 3 + captionLines * LINE_H + 6, item.get(), caption));
-                }
-            } else if (block instanceof Block.PageBreak) {
-                flow.add(new Line(Kind.BREAK, null, INK, section, 0));
-                textBefore = false;
-            }
+    private int remembered() {
+        Place last = LAST_PLACE.get(bookId);
+        if (last == null || isManual() && !Objects.equals(last.entry(), entry)) {
+            return 0;
         }
-        return flow;
+        return last.section();
     }
 
-    /** a paragraph's lines, after a blank line when text came before it in the section */
-    private void addText(List<Line> flow, Component text, int color, int section, boolean textBefore) {
-        if (textBefore) {
-            flow.add(new Line(Kind.BLANK, null, color, section, LINE_H));
+    // ---- layout ----
+
+    /** builds a column of lines from blocks; sections are counted by ornaments */
+    private final class Flow {
+        final List<Line> lines = new ArrayList<>();
+        int section;
+        boolean textBefore;
+        boolean listBefore;
+
+        Line add(Kind kind, int height) {
+            Line line = new Line(kind, height, section);
+            lines.add(line);
+            return line;
         }
-        for (FormattedCharSequence seq : font.split(text, textW)) {
-            flow.add(new Line(Kind.TEXT, seq, color, section, LINE_H));
+
+        void blank() {
+            add(Kind.BLANK, LINE_H);
         }
+
+        void blocks(List<Block> blocks) {
+            for (Block block : blocks) {
+                block(block);
+            }
+        }
+
+        void block(Block block) {
+            if (block instanceof Block.Ornament) {
+                section++;
+                Line line = add(Kind.ORNAMENT, ORNAMENT_SLOT);
+                line.keep = 2 * LINE_H;
+                textBefore = false;
+                listBefore = false;
+            } else if (block instanceof Block.Paragraph p) {
+                if (textBefore) {
+                    blank();
+                }
+                text(p.quote() ? Component.empty().withStyle(ChatFormatting.ITALIC).append(p.text()) : p.text(),
+                        p.quote() ? NOTE : INK, null);
+                textBefore = true;
+                listBefore = false;
+            } else if (block instanceof Block.Heading h) {
+                if (textBefore || listBefore) {
+                    blank();
+                }
+                List<Line> added = h.level() <= 2
+                        ? heading(h.text(), h.level() == 1 ? headingScale1 : headingScale2)
+                        : text(Component.empty().withStyle(ChatFormatting.BOLD).append(h.text()), INK, null);
+                if (!added.isEmpty()) {
+                    added.get(0).anchor = h.anchor().isEmpty() ? null : h.anchor();
+                    added.get(added.size() - 1).keep = 2 * LINE_H;
+                }
+                // the text under a heading follows it directly
+                textBefore = false;
+                listBefore = false;
+            } else if (block instanceof Block.ListItem item) {
+                if (textBefore && !listBefore) {
+                    blank();
+                } else if (listBefore) {
+                    // a little air between items, so wrapped items don't run together
+                    add(Kind.BLANK, LIST_GAP);
+                }
+                text(item.text(), INK, item.number() > 0 ? item.number() + "." : "\u2022");
+                textBefore = true;
+                listBefore = true;
+            } else if (block instanceof Block.Illustration i) {
+                Illustrations.get(i.scheme(), i.id()).ifPresent(item -> {
+                    Component caption = Component.literal(i.caption().isEmpty() ? item.getHoverName().getString()
+                            : i.caption()).withStyle(ChatFormatting.ITALIC);
+                    int captionLines = font.split(caption, textW).size();
+                    Line line = add(Kind.ILLUSTRATION, 6 + illustrationSize + 3 + captionLines * LINE_H + 6);
+                    line.item = item;
+                    line.label = caption;
+                    line.color = NOTE;
+                });
+            } else if (block instanceof Block.PageBreak) {
+                add(Kind.BREAK, 0);
+                textBefore = false;
+                listBefore = false;
+            } else if (block instanceof Block.Fence f) {
+                fence(f);
+            }
+        }
+
+        private void fence(Block.Fence fence) {
+            switch (fence.kind()) {
+                case "spotlight" -> {
+                    Optional<ItemStack> item = Icons.stack(fence.argument());
+                    if (item.isPresent()) {
+                        Line line = add(Kind.SPOTLIGHT, 44);
+                        line.item = item.get();
+                        line.keep = 2 * LINE_H;
+                    } else {
+                        missing("item", fence.argument());
+                    }
+                }
+                case "recipe" -> {
+                    Optional<RecipeView> recipe = recipe(fence.argument());
+                    if (recipe.isPresent()) {
+                        Line line = add(Kind.RECIPE, 3 * ROW_H + 10);
+                        line.recipe = recipe.get();
+                    } else {
+                        missing("recipe", fence.argument());
+                    }
+                }
+                case "image" -> {
+                    Optional<ImageView> image = image(fence.argument());
+                    if (image.isPresent()) {
+                        Line line = add(Kind.IMAGE, image.get().h() + 8);
+                        line.image = image.get();
+                    } else {
+                        missing("image", fence.argument());
+                    }
+                }
+                case "entity" -> {
+                    Optional<LivingEntity> entity = entity(fence.argument());
+                    if (entity.isPresent()) {
+                        Line line = add(Kind.ENTITY, 70);
+                        line.entity = entity.get();
+                    } else {
+                        missing("entity", fence.argument());
+                    }
+                }
+                default -> { }
+            }
+            // the block's own text follows it, as a new paragraph
+            textBefore = false;
+            listBefore = false;
+            blocks(fence.body());
+            if (!fence.body().isEmpty()) {
+                textBefore = true;
+            }
+        }
+
+        /** shows the author what is missing, rather than leaving a silent gap */
+        private void missing(String what, String id) {
+            GottschBooks.LOGGER.warn("book {}: no {} '{}'", bookId, what, id);
+            text(Component.literal("[" + what + " " + id + "?]"), NOTE, null);
+        }
+
+        /** wrapped text; a list item draws {@code bullet} and hangs its lines after it */
+        /** a {@code #}/{@code ##} heading: bold, drawn at {@code scale}, with a faint rule under its last line */
+        List<Line> heading(Component text, float scale) {
+            List<Line> added = new ArrayList<>();
+            List<FormattedCharSequence> rows = font.split(Component.empty().withStyle(ChatFormatting.BOLD).append(text),
+                    (int) (textW / scale));
+            for (int i = 0; i < rows.size(); i++) {
+                boolean last = i == rows.size() - 1;
+                Line line = add(Kind.HEADING, (int) Math.ceil(LINE_H * scale) + (last ? 4 : 0));
+                line.text = rows.get(i);
+                line.scale = scale;
+                line.rule = last;
+                added.add(line);
+            }
+            return added;
+        }
+
+        List<Line> text(Component text, int color, @Nullable String bullet) {
+            int indent = bullet == null ? 0 : font.width(bullet + " ");
+            List<Line> added = new ArrayList<>();
+            for (FormattedCharSequence seq : font.split(text, textW - indent)) {
+                Line line = add(Kind.TEXT, LINE_H);
+                line.text = seq;
+                line.color = color;
+                line.indent = indent;
+                if (added.isEmpty()) {
+                    line.bullet = bullet;
+                }
+                added.add(line);
+            }
+            return added;
+        }
+    }
+
+    private List<Line> flow() {
+        Flow flow = new Flow();
+        if (!isManual()) {
+            flow.add(Kind.TITLE, titleHeight(title, author.isPresent()));
+            flow.blocks(loreBlocks);
+        } else if (entry == null) {
+            contents(flow);
+        } else {
+            Manual.Entry current = manual.entry(entry).orElseThrow();
+            Line title = flow.add(Kind.ENTRY_TITLE, entryTitleHeight(current.title()));
+            title.label = current.title();
+            title.item = Icons.stack(current.icon()).orElse(ItemStack.EMPTY);
+            List<Block> blocks = new ArrayList<>(current.text().blocks());
+            if (!blocks.isEmpty() && blocks.get(0) instanceof Block.Heading h && h.level() == 1) {
+                blocks.remove(0);
+            }
+            flow.blocks(blocks);
+        }
+        return flow.lines;
+    }
+
+    /** a manual's opening: its title, the landing text, then each category with its entries */
+    private void contents(Flow flow) {
+        flow.add(Kind.TITLE, titleHeight(title, false));
+        flow.blocks(manual.landing());
+        for (Manual.Category category : manual.categories()) {
+            List<Manual.Entry> entries = manual.entriesIn(category.id());
+            if (entries.isEmpty()) {
+                continue;
+            }
+            flow.blank();
+            Line heading = flow.add(Kind.CATEGORY, ROW_H + 2);
+            heading.label = category.title();
+            heading.item = Icons.stack(category.icon()).orElse(ItemStack.EMPTY);
+            heading.keep = ROW_H;
+            flow.textBefore = false;
+            if (!category.description().isEmpty()) {
+                flow.blocks(category.description());
+                flow.textBefore = false;
+            }
+            entries.forEach(entry -> row(flow, entry));
+        }
+        List<Manual.Entry> loose = manual.entriesIn("");
+        if (!loose.isEmpty()) {
+            flow.blank();
+            loose.forEach(entry -> row(flow, entry));
+        }
+    }
+
+    private void row(Flow flow, Manual.Entry entry) {
+        Line row = flow.add(Kind.LINK_ROW, ROW_H);
+        row.label = entry.title();
+        row.item = Icons.stack(entry.icon()).orElse(ItemStack.EMPTY);
+        row.target = entry.id();
+    }
+
+    private Optional<RecipeView> recipe(String argument) {
+        ResourceLocation id = ResourceLocation.tryParse(argument);
+        if (id == null || minecraft.level == null) {
+            return Optional.empty();
+        }
+        return minecraft.level.getRecipeManager().byKey(id).map(found -> {
+            Recipe<?> recipe = found;
+            List<Ingredient> ingredients = recipe.getIngredients();
+            int width = recipe instanceof ShapedRecipe shaped ? shaped.getWidth() : 3;
+            List<ItemStack[]> grid = new ArrayList<>(Arrays.asList(new ItemStack[9][]));
+            for (int i = 0; i < ingredients.size() && i < 9; i++) {
+                int cell = (i / width) * 3 + i % width;
+                if (cell < 9) {
+                    grid.set(cell, ingredients.get(i).getItems());
+                }
+            }
+            return new RecipeView(grid, recipe.getResultItem(minecraft.level.registryAccess()));
+        });
+    }
+
+    /** {@code ns:textures/....png [width height]}; the size is the texture's, 256x256 when not given */
+    private Optional<ImageView> image(String argument) {
+        String[] parts = argument.strip().split("\\s+");
+        ResourceLocation texture = ResourceLocation.tryParse(parts[0]);
+        if (texture == null || minecraft.getResourceManager().getResource(texture).isEmpty()) {
+            return Optional.empty();
+        }
+        int texW = 256, texH = 256;
+        if (parts.length >= 3) {
+            try {
+                texW = Integer.parseInt(parts[1]);
+                texH = Integer.parseInt(parts[2]);
+            } catch (NumberFormatException ignored) {
+                // keep 256x256
+            }
+        }
+        int w = Math.min(textW, texW);
+        return Optional.of(new ImageView(texture, texW, texH, w, Math.max(1, w * texH / Math.max(1, texW))));
+    }
+
+    private Optional<LivingEntity> entity(String argument) {
+        if (minecraft.level == null) {
+            return Optional.empty();
+        }
+        return EntityType.byString(argument.strip()).map(type -> type.create(minecraft.level))
+                .filter(LivingEntity.class::isInstance).map(LivingEntity.class::cast);
     }
 
     private void paginate() {
@@ -223,7 +577,8 @@ public class BookScreen extends Screen {
 
         List<Line> page = new ArrayList<>();
         int used = 0;
-        for (Line line : flow) {
+        for (int i = 0; i < flow.size(); i++) {
+            Line line = flow.get(i);
             if (line.kind == Kind.BREAK) {
                 if (!page.isEmpty()) {
                     pages.add(page);
@@ -236,8 +591,13 @@ public class BookScreen extends Screen {
             if (page.isEmpty() && (line.kind == Kind.BLANK || line.kind == Kind.ORNAMENT)) {
                 continue;
             }
-            // an ornament needs two lines of its section after it, or it starts the next page instead
-            int needed = line.height + (line.kind == Kind.ORNAMENT ? 2 * LINE_H : 0);
+            // headings, ornaments and spotlights keep some of what follows them, or start the next page instead
+            int needed = line.height + line.keep;
+            // a heading over a picture (a spotlight, recipe, image or mob) keeps the whole picture with it
+            if (line.keep > 0 && (line.kind == Kind.TEXT || line.kind == Kind.HEADING) && i + 1 < flow.size() && isPicture(flow.get(i + 1))) {
+                Line next = flow.get(i + 1);
+                needed = line.height + next.height + next.keep;
+            }
             if (!page.isEmpty() && used + needed > capacity) {
                 pages.add(page);
                 page = new ArrayList<>();
@@ -254,10 +614,19 @@ public class BookScreen extends Screen {
         }
     }
 
-    private int titleHeight() {
-        int titleLines = font.split(title, (int) (textW / TITLE_SCALE)).size();
+    private static boolean isPicture(Line line) {
+        return line.kind == Kind.SPOTLIGHT || line.kind == Kind.RECIPE || line.kind == Kind.IMAGE || line.kind == Kind.ENTITY;
+    }
+
+    private int titleHeight(Component text, boolean withAuthor) {
+        int titleLines = font.split(text, (int) (textW / TITLE_SCALE)).size();
         // icon (32) + gap, title lines, author line, then room before the first section
-        return 36 + Math.round(titleLines * LINE_H * TITLE_SCALE) + (author.isPresent() ? LINE_H : 0) + 10;
+        return 36 + Math.round(titleLines * LINE_H * TITLE_SCALE) + (withAuthor ? LINE_H : 0) + 10;
+    }
+
+    private int entryTitleHeight(Component text) {
+        int titleLines = font.split(text, (int) ((textW - 20) / TITLE_SCALE)).size();
+        return Math.max(ROW_H, Math.round(titleLines * LINE_H * TITLE_SCALE)) + 8;
     }
 
     private int perView() {
@@ -276,6 +645,17 @@ public class BookScreen extends Screen {
         for (int p = 0; p < pages.size(); p++) {
             for (Line line : pages.get(p)) {
                 if (line.kind == Kind.TEXT && line.section >= section) {
+                    return p;
+                }
+            }
+        }
+        return 0;
+    }
+
+    private int pageOfAnchor(String anchor) {
+        for (int p = 0; p < pages.size(); p++) {
+            for (Line line : pages.get(p)) {
+                if (anchor.equals(line.anchor)) {
                     return p;
                 }
             }
@@ -308,6 +688,82 @@ public class BookScreen extends Screen {
         forward.visible = view < lastView();
     }
 
+    /** opens {@code target} ({@code entry}, {@code entry#anchor}, or null for the contents), remembering where we were */
+    private void go(@Nullable String target) {
+        if (!isManual()) {
+            return;
+        }
+        String to = null, anchor = null;
+        if (target != null) {
+            String[] parts = target.split("#", 2);
+            to = parts[0].isEmpty() ? entry : parts[0];
+            anchor = parts.length > 1 ? parts[1] : null;
+            if (to == null || manual.entry(to).isEmpty()) {
+                return;
+            }
+        }
+        history.push(new Place(entry, view));
+        show(to, anchor, -1);
+    }
+
+    private void goBack() {
+        if (!history.isEmpty()) {
+            Place place = history.pop();
+            show(place.entry(), null, place.section());
+        }
+    }
+
+    /** lays out {@code to}; opens at {@code anchor}, else view {@code atView}, else the first page */
+    private void show(@Nullable String to, @Nullable String anchor, int atView) {
+        entry = to;
+        paginate();
+        view = anchor != null ? viewOf(pageOfAnchor(anchor)) : Math.max(0, Math.min(atView, lastView()));
+        updateButtons();
+        minecraft.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.BOOK_PAGE_TURN, 1.0F));
+    }
+
+    @Override
+    public boolean handleComponentClicked(@Nullable Style style) {
+        if (style != null && style.getClickEvent() != null && style.getClickEvent().getAction() == ClickEvent.Action.CHANGE_PAGE
+                && style.getClickEvent().getValue().startsWith(Inline.ENTRY_LINK)) {
+            go(style.getClickEvent().getValue().substring(Inline.ENTRY_LINK.length()));
+            return true;
+        }
+        return super.handleComponentClicked(style);
+    }
+
+    @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (button == 0) {
+            for (LinkHit hit : linkHits) {
+                if (hit.contains(mouseX, mouseY)) {
+                    switch (hit.target()) {
+                        case NAV_BACK -> goBack();
+                        case NAV_CONTENTS -> go(null);
+                        default -> go(hit.target());
+                    }
+                    return true;
+                }
+            }
+            Style style = styleAt(mouseX, mouseY);
+            if (style != null && style.getClickEvent() != null && handleComponentClicked(style)) {
+                return true;
+            }
+        }
+        return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    /** the text style under the mouse, for links */
+    @Nullable
+    private Style styleAt(double mouseX, double mouseY) {
+        for (TextHit hit : textHits) {
+            if (mouseY >= hit.y() && mouseY < hit.y() + LINE_H - 1 && mouseX >= hit.x()) {
+                return font.getSplitter().componentStyleAtWidth(hit.text(), (int) mouseX - hit.x());
+            }
+        }
+        return null;
+    }
+
     @Override
     public boolean keyPressed(int key, int scanCode, int modifiers) {
         // through the buttons, for their page-turn sound; a hidden button means there's no page that way
@@ -321,6 +777,10 @@ public class BookScreen extends Screen {
             if (forward.visible) {
                 forward.onPress();
             }
+            return true;
+        }
+        if (key == GLFW.GLFW_KEY_BACKSPACE && isManual() && !history.isEmpty()) {
+            goBack();
             return true;
         }
         return super.keyPressed(key, scanCode, modifiers);
@@ -341,15 +801,19 @@ public class BookScreen extends Screen {
 
     @Override
     public void removed() {
-        LAST_SECTION.put(bookId, currentSection());
+        LAST_PLACE.put(bookId, new Place(entry, currentSection()));
         super.removed();
     }
 
     // ---- drawing ----
 
+    private static final String NAV_BACK = "\u0000back", NAV_CONTENTS = "\u0000contents";
+
     /** the book, drawn before the widgets so the page buttons sit on top of it */
-    private void drawBook(GuiGraphics g) {
-        hits.clear();
+    private void drawBook(GuiGraphics g, int mouseX, int mouseY) {
+        itemHits.clear();
+        linkHits.clear();
+        textHits.clear();
         nineSlice(g, cover, bookX, bookY, bookW, bookH, COVER_BORDER);
         int first = view * perView();
         for (int i = 0; i < perView(); i++) {
@@ -360,21 +824,66 @@ public class BookScreen extends Screen {
                 gutterShadow(g, x, y, i == 0);
             }
             if (first + i < pages.size()) {
-                drawPage(g, pages.get(first + i), x + PAGE_PAD, y + PAGE_PAD);
+                drawPage(g, pages.get(first + i), x + PAGE_PAD, y + PAGE_PAD, mouseX, mouseY);
                 String number = String.valueOf(first + i + 1);
                 g.drawString(font, number, x + (pageW - font.width(number)) / 2, y + pageH - 12, NOTE, false);
             }
         }
+        if (isManual()) {
+            drawNav(g, mouseX, mouseY);
+        }
     }
 
-    private void drawPage(GuiGraphics g, List<Line> lines, int x, int y) {
+    /** Back and Contents, above the book */
+    private void drawNav(GuiGraphics g, int mouseX, int mouseY) {
+        int y = bookY - LINE_H;
+        if (!history.isEmpty()) {
+            navLabel(g, Component.translatable("gottschbooks.book.back"), bookX + 4, y, NAV_BACK, mouseX, mouseY);
+        }
+        if (entry != null) {
+            Component contents = Component.translatable("gottschbooks.book.contents");
+            navLabel(g, contents, bookX + bookW - 4 - font.width(contents), y, NAV_CONTENTS, mouseX, mouseY);
+        }
+    }
+
+    private void navLabel(GuiGraphics g, Component label, int x, int y, String target, int mouseX, int mouseY) {
+        LinkHit hit = new LinkHit(x - 2, y - 1, font.width(label) + 4, LINE_H, target);
+        linkHits.add(hit);
+        boolean hover = hit.contains(mouseX, mouseY);
+        g.drawString(font, hover ? label.copy().withStyle(ChatFormatting.UNDERLINE) : label, x, y, hover ? 0xFFFFFFA0 : 0xFFFFFFFF, true);
+    }
+
+    private void drawPage(GuiGraphics g, List<Line> lines, int x, int y, int mouseX, int mouseY) {
         for (Line line : lines) {
             switch (line.kind) {
-                case TEXT -> g.drawString(font, line.text, x, y, line.color, false);
+                case TEXT -> {
+                    if (line.bullet != null) {
+                        g.drawString(font, line.bullet, x, y, line.color, false);
+                    }
+                    g.drawString(font, line.text, x + line.indent, y, line.color, false);
+                    textHits.add(new TextHit(x + line.indent, y, line.text));
+                }
+                case HEADING -> {
+                    g.pose().pushPose();
+                    g.pose().translate(x, y, 0);
+                    g.pose().scale(line.scale, line.scale, 1F);
+                    g.drawString(font, line.text, 0, 0, INK, false);
+                    g.pose().popPose();
+                    if (line.rule) {
+                        g.fill(x, y + line.height - 2, x + textW, y + line.height - 1, NOTE & 0x60FFFFFF);
+                    }
+                }
                 case ORNAMENT -> g.blit(ornament, x + (textW - ORNAMENT_W) / 2, y + (ORNAMENT_SLOT - ORNAMENT_H) / 2,
                         0, 0, ORNAMENT_W, ORNAMENT_H, ORNAMENT_W, ORNAMENT_H);
                 case TITLE -> drawTitle(g, x, y);
+                case ENTRY_TITLE -> drawEntryTitle(g, line, x, y);
                 case ILLUSTRATION -> drawIllustration(g, line, x, y);
+                case SPOTLIGHT -> drawSpotlight(g, line, x, y);
+                case RECIPE -> drawRecipe(g, line.recipe, x, y);
+                case IMAGE -> drawImage(g, line.image, x, y);
+                case ENTITY -> drawEntity(g, line.entity, x, y, line.height);
+                case CATEGORY -> drawRow(g, line, x, y, true, mouseX, mouseY);
+                case LINK_ROW -> drawRow(g, line, x, y, false, mouseX, mouseY);
                 case BLANK, BREAK -> { }
             }
             y += line.height;
@@ -408,6 +917,51 @@ public class BookScreen extends Screen {
         });
     }
 
+    /** an entry's name, larger, after its icon */
+    private void drawEntryTitle(GuiGraphics g, Line line, int x, int y) {
+        int textX = x;
+        if (!line.item.isEmpty()) {
+            g.renderItem(line.item, x, y);
+            itemHits.add(new ItemHit(x, y, 16, line.item));
+            textX += 20;
+        }
+        g.pose().pushPose();
+        g.pose().translate(textX, y + 2, 0);
+        g.pose().scale(TITLE_SCALE, TITLE_SCALE, 1F);
+        int row = 0;
+        for (FormattedCharSequence seq : font.split(line.label, (int) ((textW - (textX - x)) / TITLE_SCALE))) {
+            g.drawString(font, seq, 0, row * LINE_H, INK, false);
+            row++;
+        }
+        g.pose().popPose();
+        g.fill(x, y + line.height - 4, x + textW, y + line.height - 3, NOTE & 0x80FFFFFF);
+    }
+
+    /** a category heading (bold) or an entry row (a link) on the contents */
+    private void drawRow(GuiGraphics g, Line line, int x, int y, boolean heading, int mouseX, int mouseY) {
+        int textX = x;
+        if (!line.item.isEmpty()) {
+            g.renderItem(line.item, x, y + 1);
+            textX += 20;
+        }
+        Component label = line.label;
+        boolean hover = false;
+        if (!heading) {
+            LinkHit hit = new LinkHit(x, y, textW, ROW_H, line.target);
+            linkHits.add(hit);
+            hover = hit.contains(mouseX, mouseY);
+        } else {
+            label = Component.empty().withStyle(ChatFormatting.BOLD).append(label);
+        }
+        String shown = font.plainSubstrByWidth(label.getString(), textW - (textX - x));
+        Component text = Component.literal(shown).withStyle(label.getStyle());
+        if (hover) {
+            text = text.copy().withStyle(ChatFormatting.UNDERLINE);
+        }
+        g.drawString(font, heading ? Component.empty().withStyle(ChatFormatting.BOLD).append(shown) : text, textX,
+                y + (ROW_H - 8) / 2 + 1, hover ? LINK : INK, false);
+    }
+
     private void drawIllustration(GuiGraphics g, Line line, int x, int y) {
         int ix = x + (textW - illustrationSize) / 2;
         int iy = y + 6;
@@ -416,28 +970,83 @@ public class BookScreen extends Screen {
         g.pose().scale(illustrationScale, illustrationScale, 1F);
         g.renderItem(line.item, 0, 0);
         g.pose().popPose();
-        hits.add(new Hit(ix, iy, illustrationSize, line.item));
+        itemHits.add(new ItemHit(ix, iy, illustrationSize, line.item));
         int cy = iy + illustrationSize + 3;
-        for (FormattedCharSequence seq : font.split(line.caption, textW)) {
+        for (FormattedCharSequence seq : font.split(line.label, textW)) {
             g.drawString(font, seq, x + (textW - font.width(seq)) / 2, cy, NOTE, false);
             cy += LINE_H;
         }
     }
 
+    /** a big item, centred in a frame */
+    private void drawSpotlight(GuiGraphics g, Line line, int x, int y) {
+        int size = 32;
+        int ix = x + (textW - size) / 2;
+        int iy = y + 4;
+        g.fill(ix - 3, iy - 3, ix + size + 3, iy + size + 3, SLOT);
+        g.pose().pushPose();
+        g.pose().translate(ix, iy, 0);
+        g.pose().scale(2F, 2F, 1F);
+        g.renderItem(line.item, 0, 0);
+        g.pose().popPose();
+        itemHits.add(new ItemHit(ix, iy, size, line.item));
+    }
+
+    /** a 3x3 grid, an arrow and the result; ingredients that accept several items cycle through them */
+    private void drawRecipe(GuiGraphics g, RecipeView recipe, int x, int y) {
+        int gridW = 3 * ROW_H, total = gridW + 22 + ROW_H;
+        int gx = x + (textW - total) / 2, gy = y + 4;
+        long tick = System.currentTimeMillis() / 1000;
+        for (int cell = 0; cell < 9; cell++) {
+            int cx = gx + (cell % 3) * ROW_H, cy = gy + (cell / 3) * ROW_H;
+            g.fill(cx, cy, cx + ROW_H - 1, cy + ROW_H - 1, SLOT);
+            ItemStack[] options = recipe.grid().get(cell);
+            if (options != null && options.length > 0) {
+                ItemStack item = options[(int) (tick % options.length)];
+                g.renderItem(item, cx + 1, cy + 1);
+                itemHits.add(new ItemHit(cx + 1, cy + 1, 16, item));
+            }
+        }
+        int ax = gx + gridW + 5, ay = gy + ROW_H + 4;
+        g.drawString(font, "→", ax, ay, INK, false);
+        int rx = gx + gridW + 22, ry = gy + ROW_H;
+        g.fill(rx, ry, rx + ROW_H - 1, ry + ROW_H - 1, SLOT);
+        g.renderItem(recipe.result(), rx + 1, ry + 1);
+        g.renderItemDecorations(font, recipe.result(), rx + 1, ry + 1);
+        itemHits.add(new ItemHit(rx + 1, ry + 1, 16, recipe.result()));
+    }
+
+    private void drawImage(GuiGraphics g, ImageView image, int x, int y) {
+        g.blit(image.texture(), x + (textW - image.w()) / 2, y + 4, image.w(), image.h(), 0, 0, image.texW(), image.texH(),
+                image.texW(), image.texH());
+    }
+
+    private void drawEntity(GuiGraphics g, LivingEntity entity, int x, int y, int height) {
+        float size = Math.max(entity.getBbHeight(), entity.getBbWidth());
+        int scale = (int) Math.max(8, (height - 14) / Math.max(1F, size));
+        // a slow turn, so the whole mob shows; 1.20.1 draws it standing on (x, y)
+        float angle = (float) Math.sin(System.currentTimeMillis() / 1500.0) * 1.5F;
+        InventoryScreen.renderEntityInInventoryFollowsAngle(g, x + textW / 2, y + height - 4, scale, angle, 0F, entity);
+    }
+
     /**
      * 1.20.1's {@code Screen.render} draws only the widgets (1.21 also draws the background), so the darkened
-     * background and the book come first here; the illustrations' tooltips go over everything else.
+     * background and the book come first here; the items' tooltips go over everything else.
      */
     @Override
     public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
         renderBackground(g);
-        drawBook(g);
+        drawBook(g, mouseX, mouseY);
         super.render(g, mouseX, mouseY, partialTick);
-        for (Hit hit : hits) {
+        for (ItemHit hit : itemHits) {
             if (hit.contains(mouseX, mouseY)) {
-                g.renderTooltip(font, hit.item, mouseX, mouseY);
-                break;
+                g.renderTooltip(font, hit.item(), mouseX, mouseY);
+                return;
             }
+        }
+        Style style = styleAt(mouseX, mouseY);
+        if (style != null && style.getClickEvent() != null && style.getClickEvent().getAction() == ClickEvent.Action.OPEN_URL) {
+            g.renderTooltip(font, Component.literal(style.getClickEvent().getValue()), mouseX, mouseY);
         }
     }
 

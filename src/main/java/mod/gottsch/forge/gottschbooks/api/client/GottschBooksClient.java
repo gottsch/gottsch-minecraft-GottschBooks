@@ -20,7 +20,9 @@ package mod.gottsch.forge.gottschbooks.api.client;
 import mod.gottsch.forge.gottschbooks.GottschBooks;
 import mod.gottsch.forge.gottschbooks.client.BookLoader;
 import mod.gottsch.forge.gottschbooks.client.BookScreen;
+import mod.gottsch.forge.gottschbooks.client.Icons;
 import mod.gottsch.forge.gottschbooks.client.LoadedBook;
+import mod.gottsch.forge.gottschbooks.client.Manual;
 import mod.gottsch.forge.gottschbooks.core.text.BookText;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
@@ -40,9 +42,9 @@ public final class GottschBooksClient {
 
     private GottschBooksClient() {}
 
-    /** Opens {@code book} with a plain book on its title page. */
+    /** Opens {@code book}; a manual opens where it was left (else its contents), with its {@code icon:} on the title. */
     public static boolean open(ResourceLocation book) {
-        return open(book, new ItemStack(Items.BOOK));
+        return open(book, Optional.empty(), Optional.empty());
     }
 
     /**
@@ -52,9 +54,28 @@ public final class GottschBooksClient {
      * @return false, after telling the player, when the book has no text loaded
      */
     public static boolean open(ResourceLocation book, ItemStack icon) {
+        return open(book, Optional.of(icon), Optional.empty());
+    }
+
+    /**
+     * Opens manual {@code book} at {@code entry} ({@code "gems"}, or {@code "gems#ruby"} for a heading's anchor). An
+     * entry that doesn't exist, or is still locked, opens the contents instead.
+     */
+    public static boolean open(ResourceLocation book, String entry) {
+        return open(book, Optional.empty(), Optional.of(entry));
+    }
+
+    private static boolean open(ResourceLocation book, Optional<ItemStack> icon, Optional<String> entry) {
         Minecraft minecraft = Minecraft.getInstance();
         String locale = minecraft.getLanguageManager().getSelected();
         Optional<LoadedBook> loaded = BookLoader.get(book);
+        if (loaded.isPresent() && loaded.get().isManual()) {
+            LoadedBook manual = loaded.get();
+            ItemStack shown = icon.orElseGet(() -> manual.meta().get("icon").flatMap(Icons::stack)
+                    .orElseGet(() -> new ItemStack(Items.BOOK)));
+            minecraft.setScreen(new BookScreen(manual, Manual.of(manual, locale), shown.copyWithCount(1), entry));
+            return true;
+        }
         Optional<BookText> text = loaded.flatMap(b -> b.entry(LoadedBook.LORE_ENTRY, locale));
         if (text.isEmpty()) {
             GottschBooks.LOGGER.warn("no text for book {} (looked for assets/{}/books/{}/<locale>/{}.md)",
@@ -64,7 +85,7 @@ public final class GottschBooksClient {
             }
             return false;
         }
-        minecraft.setScreen(new BookScreen(loaded.get(), text.get(), icon.copyWithCount(1)));
+        minecraft.setScreen(new BookScreen(loaded.get(), text.get(), icon.orElseGet(() -> new ItemStack(Items.BOOK)).copyWithCount(1)));
         return true;
     }
 }

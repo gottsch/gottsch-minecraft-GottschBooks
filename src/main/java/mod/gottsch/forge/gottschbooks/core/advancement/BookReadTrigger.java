@@ -110,7 +110,7 @@ public class BookReadTrigger extends SimpleCriterionTrigger<BookReadTrigger.Trig
 
         /** every enabled book of {@code books} read; false when there are none */
         private static boolean readEvery(Set<ResourceLocation> read, Stream<Holder<BookDef>> books) {
-            List<ResourceLocation> ids = books.filter(h -> !h.value().disabled())
+            List<ResourceLocation> ids = books.filter(h -> h.value().tracked())
                     .flatMap(h -> h.unwrapKey().stream()).map(ResourceKey::location).toList();
             return !ids.isEmpty() && read.containsAll(ids);
         }

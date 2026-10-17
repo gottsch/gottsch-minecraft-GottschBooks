@@ -17,6 +17,8 @@ java.toolchain.languageVersion = JavaLanguageVersion.of(17)
 
 minecraft {
     mappings channel: mapping_channel, version: mapping_version
+    // opens ClientAdvancements.progress for advancement-locked manual entries
+    accessTransformer = file('src/main/resources/META-INF/accesstransformer.cfg')
     copyIdeResources = true
 
     runs {
