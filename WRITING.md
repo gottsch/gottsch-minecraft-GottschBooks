@@ -2,8 +2,8 @@
 
 Gottsch Books reads books written in a small subset of Markdown, one file per entry per language, from your mod's
 (or a resource pack's) assets. This page covers everything a book can contain and how to wire it into a mod. The
-format is the same on NeoForge 1.21.1 and Forge 1.20.1. (Forge 1.20.1 has lore books so far; manuals, links and
-the fenced blocks come to it in a later release.)
+format and every feature are the same on NeoForge 1.21.1 and Forge 1.20.1. Where the two differ (item data in
+commands and loot tables, and the build setup), both forms are shown.
 
 - [Two kinds of book](#two-kinds-of-book)
 - [No code needed](#no-code-needed)
@@ -37,13 +37,15 @@ A book is entirely data: a resource pack holds its text and art, and a datapack 
 players' hands, use the library's own item, `gottschbooks:book`, which opens whatever book its stack names:
 
 ```
-/give @p gottschbooks:book[gottschbooks:book="mymod:guide"]
+/give @p gottschbooks:book[gottschbooks:book="mymod:guide"]       (NeoForge 1.21.1: a data component)
+/give @p gottschbooks:book{"gottschbooks:book":"mymod:guide"}     (Forge 1.20.1: stack NBT)
 ```
 
 - **Give it on first join:** `"give_on_first_join": true` in the book's [server entry](#the-book-on-the-server).
 - **Put it in loot:** a loot table entry for `gottschbooks:book` with a `set_components` function setting
-  `"gottschbooks:book": "mymod:guide"`.
-- **Name it:** a lang line `"book.mymod.guide": "My Guide"` in your resource pack, or `item_name` on the stack.
+  `"gottschbooks:book": "mymod:guide"` (on 1.20.1, `set_nbt` with `{"gottschbooks:book":"mymod:guide"}`).
+- **Name it:** a lang line `"book.mymod.guide": "My Guide"` in your resource pack, or on the stack (`item_name` on
+  1.21.1, a `display` name on 1.20.1).
 - **Open it from a command block or function:** `/gottschbooks open @p mymod:guide`.
 
 So a modpack can ship its own guide with no mod at all. A mod only needs code for an item of its own (its own
@@ -348,7 +350,7 @@ An empty result leaves the picture out; an exception is logged and never breaks 
   `all_in` and "read any book" advancements meant for your lore books. Without `give_on_first_join` a manual needs
   no entry at all.
 - **Item names are lang keys, not book text.** The server can't read assets, so a book's item name comes from
-  `book.<namespace>.<path>` in a language file (or the stack's `item_name`), not from the book's `title:`.
+  `book.<namespace>.<path>` in a language file (or the stack's own name), not from the book's `title:`.
 - **Skins:** `cover.png` and `page.png` are 32x32 nine-slices (8 px border on the cover, 5 px on the page; edges
   and centre are tiled, never stretched). `ornament.png` is 21x5. The default skin is in
   `assets/gottschbooks/textures/gui/book/`.
