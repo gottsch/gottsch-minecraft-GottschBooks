@@ -18,6 +18,7 @@
 package mod.gottsch.neo.gottschbooks.core.text;
 
 import net.minecraft.ChatFormatting;
+import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.Style;
 import net.minecraft.network.chat.TextColor;
@@ -94,9 +95,100 @@ class BookParserTest {
     }
 
     @Test
-    void hardBreaksAndListItems() {
-        BookText book = BookParser.parse("one  \ntwo\\\nthree\n- a\n- b\n");
-        assertEquals("one\ntwo\nthree\n- a\n- b", book.blocks().get(0) instanceof Block.Paragraph p ? p.text().getString() : "");
+    void hardBreaks() {
+        BookText book = BookParser.parse("one  \ntwo\\\nthree\n");
+        assertEquals("one\ntwo\nthree", ((Block.Paragraph) book.blocks().get(0)).text().getString());
+    }
+
+    @Test
+    void lists() {
+        BookText book = BookParser.parse("Intro\n- a\n- b\n  continued\n\n1. one\n2) two\n\n\\- not a list\n");
+        List<Block> b = book.blocks();
+        assertEquals(6, b.size(), b.toString());
+        assertEquals("Intro", ((Block.Paragraph) b.get(0)).text().getString());
+        assertEquals(0, ((Block.ListItem) b.get(1)).number());
+        assertEquals("a", ((Block.ListItem) b.get(1)).text().getString());
+        assertEquals("b continued", ((Block.ListItem) b.get(2)).text().getString());
+        assertEquals(1, ((Block.ListItem) b.get(3)).number());
+        assertEquals(2, ((Block.ListItem) b.get(4)).number());
+        assertEquals("two", ((Block.ListItem) b.get(4)).text().getString());
+        assertEquals("- not a list", ((Block.Paragraph) b.get(5)).text().getString());
+    }
+
+    @Test
+    void listItemWithBreak() {
+        BookText book = BookParser.parse("- **Harm +** {dark_gray}level 2{}\\\n  3 hp to one mob.\n- **Next**\n");
+        List<Block> b = book.blocks();
+        assertEquals(2, b.size(), b.toString());
+        assertEquals("Harm + level 2\n3 hp to one mob.", ((Block.ListItem) b.get(0)).text().getString());
+    }
+
+    @Test
+    void fences() {
+        BookText book = BookParser.parse("""
+                ## Topaz {#topaz}
+                ```spotlight item:magictreasures:topaz
+                The **most** common gem.
+
+                - Tier: 1
+                ```
+                ```recipe minecraft:stick
+                ```
+                after
+                """);
+        List<Block> b = book.blocks();
+        assertEquals(4, b.size(), b.toString());
+        Block.Heading h = (Block.Heading) b.get(0);
+        assertEquals("Topaz", h.text().getString());
+        assertEquals("topaz", h.anchor());
+        Block.Fence spot = (Block.Fence) b.get(1);
+        assertEquals("spotlight", spot.kind());
+        assertEquals("item:magictreasures:topaz", spot.argument());
+        assertEquals(2, spot.body().size());
+        assertEquals("The most common gem.", ((Block.Paragraph) spot.body().get(0)).text().getString());
+        assertInstanceOf(Block.ListItem.class, spot.body().get(1));
+        Block.Fence recipe = (Block.Fence) b.get(2);
+        assertEquals("recipe", recipe.kind());
+        assertTrue(recipe.body().isEmpty());
+        assertEquals("after", ((Block.Paragraph) b.get(3)).text().getString());
+    }
+
+    @Test
+    void unclosedFenceRunsToTheEnd() {
+        BookText book = BookParser.parse("```image ns:textures/a.png\ncaption\n");
+        assertEquals(1, book.blocks().size());
+        assertEquals(1, ((Block.Fence) book.blocks().get(0)).body().size());
+    }
+
+    @Test
+    void headingWithoutAnchor() {
+        assertEquals("", ((Block.Heading) BookParser.parse("# Title\n").blocks().get(0)).anchor());
+    }
+
+    @Test
+    void links() {
+        Component c = Inline.parse("See [the **gems**](entry:gems#ruby), [site](https://example.com/a) and [not a link] or [x](ftp://no).");
+        assertEquals("See the gems, site and [not a link] or [x](ftp://no).", c.getString());
+        List<ClickEvent> clicks = new ArrayList<>();
+        List<String> bolds = new ArrayList<>();
+        c.visit((style, text) -> {
+            if (style.getClickEvent() != null) {
+                clicks.add(style.getClickEvent());
+                assertTrue(style.isUnderlined(), text);
+            }
+            if (style.isBold()) {
+                bolds.add(text);
+            }
+            return Optional.empty();
+        }, Style.EMPTY);
+        assertEquals(new ClickEvent(ClickEvent.Action.CHANGE_PAGE, "entry:gems#ruby"), clicks.get(0));
+        assertEquals(new ClickEvent(ClickEvent.Action.OPEN_URL, "https://example.com/a"), clicks.get(clicks.size() - 1));
+        assertEquals(List.of("gems"), bolds);
+    }
+
+    @Test
+    void loreBracketsStayText() {
+        assertEquals("[An editor's note.]", Inline.parse("[An editor's note.]").getString());
     }
 
     @Test

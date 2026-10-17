@@ -26,3 +26,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Markdown subset: front matter (`title`, `author`), paragraphs, hard breaks, `*italic*`, `**bold**`,
   `{gold}colour{}` / `{#d4a017}colour{}`, `#` headings, `---` ornaments, `>` notes, `![caption](scheme:ns:id)`
   illustrations and `<!-- page -->` page breaks. Anything else is shown as plain text.
+- Manuals (`mode: manual` in `book.md`): a contents page (landing text, then each category's entries with their
+  icons), entries opened with a click, `[text](entry:id#anchor)` links between entries, Back and Contents above the
+  book (Backspace goes back too), and web links `[text](https://...)` that ask before opening. Files:
+  `<locale>/_index.md` (title, landing text), `<locale>/categories/<id>.md` (title, icon, sort, description) and
+  `<locale>/<entry>.md` (title, category, icon, sort, and `advancement:` to hide an entry until the player has it).
+- Entry blocks: ` ```spotlight <item> ` (a large item with its text), ` ```recipe <ns:id> ` (a crafting grid, cycling
+  through ingredients that accept several items), ` ```image <texture> [width height] `, ` ```entity <ns:id> ` (a
+  turning mob); `- item` / `1. item` lists; `## Heading {#anchor}` for link targets.
+- `/gottschbooks open <players> <book> [entry]` (operators) and `GottschBooksClient.open(book, entry)`.
+- `BookItem(properties, book)`: an item that is always the same book, such as a mod's manual.
+- A warning in the log for a `{#rrggbb}` colour that is hard to read on the page.
+- `gottschbooks:book`, a generic book item that opens whatever book its stack names, so packs can hand out books
+  with no code: `/give @p gottschbooks:book[gottschbooks:book="mymod:guide"]`, or `set_components` in a loot table.
+- Book entries (`data/<ns>/gottschbooks/book/<book>.json`) take `"give_on_first_join": true` (each player gets the
+  book once), `"item"` (which `BookItem` to give) and `"track_reading": false` (for manuals, so they don't count
+  toward "read every book" advancements).
+- Any `BookItem` is named by the lang key `book.<namespace>.<path>` when a language file has it.
+- `WRITING.md`: the guide to writing books.
+- List items have a little space between them.
+- `#` and `##` headings are drawn larger (about 1.5x and 1.25x, kept to whole screen pixels) with a faint rule under them, so they stand out from bold text.

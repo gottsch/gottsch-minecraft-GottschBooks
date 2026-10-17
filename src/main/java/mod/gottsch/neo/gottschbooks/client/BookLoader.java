@@ -30,8 +30,10 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -46,6 +48,9 @@ public class BookLoader extends SimplePreparableReloadListener<Map<ResourceLocat
     private static final String BOOK_FILE = "book.md";
     private static final Pattern LOCALE = Pattern.compile("[a-z]{2,3}_[a-z0-9]{2,3}");
     private static final BookText NO_META = new BookText(Map.of(), List.of());
+    private static final Pattern HEX_COLOUR = Pattern.compile("\\{#([0-9a-fA-F]{6})}");
+    /** the default page art's paper colour */
+    static final int PAGE_COLOUR = 0xEADCB8;
 
     private static volatile Map<ResourceLocation, LoadedBook> books = Map.of();
 
@@ -60,17 +65,24 @@ public class BookLoader extends SimplePreparableReloadListener<Map<ResourceLocat
 
         for (Map.Entry<ResourceLocation, Resource> file : manager.listResources(ROOT, rl -> rl.getPath().endsWith(".md")).entrySet()) {
             ResourceLocation location = file.getKey();
-            // books/<book...>/book.md or books/<book...>/<locale>/<entry>.md
+            // books/<book...>/book.md, or books/<book...>/<locale>/<entry...>.md: the first segment that looks like
+            // a locale ends the book's id, and everything after it names the entry (categories/gems, say)
             List<String> parts = List.of(location.getPath().substring(ROOT.length() + 1).split("/"));
+            int locale = -1;
+            for (int i = 1; i < parts.size() - 1 && locale < 0; i++) {
+                if (LOCALE.matcher(parts.get(i)).matches()) {
+                    locale = i;
+                }
+            }
             try {
-                if (parts.size() >= 2 && parts.getLast().equals(BOOK_FILE)) {
-                    metas.put(bookId(location, parts.subList(0, parts.size() - 1)), read(file.getValue()));
-                } else if (parts.size() >= 3 && LOCALE.matcher(parts.get(parts.size() - 2)).matches()) {
-                    String locale = parts.get(parts.size() - 2);
-                    String entry = parts.getLast().substring(0, parts.getLast().length() - 3);
-                    entries.computeIfAbsent(bookId(location, parts.subList(0, parts.size() - 2)), k -> new HashMap<>())
+                if (locale < 0 && parts.size() >= 2 && parts.get(parts.size() - 1).equals(BOOK_FILE)) {
+                    metas.put(bookId(location, parts.subList(0, parts.size() - 1)), read(location, file.getValue()));
+                } else if (locale > 0) {
+                    String path = String.join("/", parts.subList(locale + 1, parts.size()));
+                    String entry = path.substring(0, path.length() - 3);
+                    entries.computeIfAbsent(bookId(location, parts.subList(0, locale)), k -> new HashMap<>())
                             .computeIfAbsent(entry, k -> new HashMap<>())
-                            .put(locale, read(file.getValue()));
+                            .put(parts.get(locale), read(location, file.getValue()));
                 } else {
                     GottschBooks.LOGGER.warn("ignoring book file {}: expected books/<book>/book.md or books/<book>/<locale>/<entry>.md", location);
                 }
@@ -96,9 +108,43 @@ public class BookLoader extends SimplePreparableReloadListener<Map<ResourceLocat
         return ResourceLocation.fromNamespaceAndPath(file.getNamespace(), String.join("/", path));
     }
 
-    private static BookText read(Resource resource) throws IOException {
+    private static BookText read(ResourceLocation location, Resource resource) throws IOException {
         try (BufferedReader reader = resource.openAsReader()) {
-            return BookParser.parse(reader.lines().collect(Collectors.joining("\n")));
+            String source = reader.lines().collect(Collectors.joining("\n"));
+            warnLowContrast(location, source);
+            return BookParser.parse(source);
         }
+    }
+
+    /**
+     * Logs each hex colour ({@code {#rrggbb}}) that is hard to read on the default page (contrast under 3:1); the book
+     * still loads. Vanilla's named colours are the author's call and aren't checked.
+     */
+    private static void warnLowContrast(ResourceLocation location, String source) {
+        Matcher m = HEX_COLOUR.matcher(source);
+        while (m.find()) {
+            int rgb = Integer.parseInt(m.group(1), 16);
+            double ratio = contrast(rgb, PAGE_COLOUR);
+            if (ratio < 3.0) {
+                GottschBooks.LOGGER.warn("{}: colour #{} is hard to read on the page (contrast {}:1, aim for 3:1 or more)",
+                        location, m.group(1), String.format(Locale.ROOT, "%.1f", ratio));
+            }
+        }
+    }
+
+    /** WCAG contrast ratio of two RGB colours */
+    static double contrast(int a, int b) {
+        double la = luminance(a), lb = luminance(b);
+        return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+    }
+
+    private static double luminance(int rgb) {
+        double r = channel(rgb >> 16 & 0xFF), g = channel(rgb >> 8 & 0xFF), b = channel(rgb & 0xFF);
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    }
+
+    private static double channel(int c) {
+        double v = c / 255.0;
+        return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
     }
 }

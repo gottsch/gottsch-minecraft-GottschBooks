@@ -18,6 +18,7 @@
 package mod.gottsch.neo.gottschbooks.core.text;
 
 import net.minecraft.ChatFormatting;
+import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
@@ -27,7 +28,8 @@ import java.util.Optional;
 import java.util.regex.Pattern;
 
 /**
- * The inline pass: {@code **bold**}, {@code *italic*}, {@code {gold}colour{}} and {@code {#d4a017}colour{}}, with
+ * The inline pass: {@code **bold**}, {@code *italic*}, {@code {gold}colour{}}, {@code {#d4a017}colour{}} and
+ * {@code [text](entry:id)} / {@code [text](https://...)} links, with
  * {@code \} escaping the next character. A marker with nothing to close it is plain text, so a stray {@code *} or
  * {@code {} never breaks a book. Colours don't nest: a second colour replaces the first until {@code {}}.
  *
@@ -65,6 +67,12 @@ public final class Inline {
                 }
                 run.append("*".repeat(n - (bold ? 2 : 0) - (italic ? 1 : 0)));
                 i += n;
+            } else if (c == '[' && link(text, i) != null) {
+                Link link = link(text, i);
+                flush(root, run, style);
+                root.append(Component.empty().setStyle(LINK.withClickEvent(link.click()).applyTo(style))
+                        .append(parse(link.text())));
+                i = link.end();
             } else if (c == '{') {
                 int end = text.indexOf('}', i);
                 Optional<TextColor> colour = end < 0 ? Optional.empty() : colour(text.substring(i + 1, end));
@@ -88,6 +96,42 @@ public final class Inline {
         }
         flush(root, run, style);
         return root;
+    }
+
+    /** where a book link leads: {@code entry:<entry>[#anchor]} (another entry of the same book) */
+    public static final String ENTRY_LINK = "entry:";
+    /** links are underlined in a dark blue that reads on the page */
+    private static final Style LINK = Style.EMPTY.withUnderlined(true).withColor(0x1E4FA0);
+    private static final Pattern ENTRY_TARGET = Pattern.compile("entry:[a-z0-9_./-]+(#[a-z0-9_-]+)?");
+    private static final Pattern URL_TARGET = Pattern.compile("https?://[^\s)]+");
+
+    /** a link at {@code [}: its text, where it leads, and the index after its {@code )} */
+    private record Link(String text, ClickEvent click, int end) {}
+
+    /**
+     * {@code [text](entry:id#anchor)} or {@code [text](https://...)} starting at {@code open}; null when it isn't one,
+     * so {@code [brackets]} in ordinary text stay as they are. Entry links ride on {@code CHANGE_PAGE}, which the
+     * book screen handles; web links use {@code OPEN_URL}, which asks the player before opening.
+     */
+    private static Link link(String text, int open) {
+        int close = text.indexOf("](", open + 1);
+        if (close < 0) {
+            return null;
+        }
+        int end = text.indexOf(')', close + 2);
+        if (end < 0) {
+            return null;
+        }
+        String target = text.substring(close + 2, end).strip();
+        ClickEvent click;
+        if (ENTRY_TARGET.matcher(target).matches()) {
+            click = new ClickEvent(ClickEvent.Action.CHANGE_PAGE, target);
+        } else if (URL_TARGET.matcher(target).matches()) {
+            click = new ClickEvent(ClickEvent.Action.OPEN_URL, target);
+        } else {
+            return null;
+        }
+        return new Link(text.substring(open + 1, close), click, end + 1);
     }
 
     /** {@code gold}, {@code dark_aqua} (vanilla's 16 colour names) or {@code #d4a017} */

@@ -17,6 +17,7 @@
  */
 package mod.gottsch.neo.gottschbooks.core.text;
 
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.ArrayList;
@@ -31,8 +32,9 @@ import java.util.regex.Pattern;
 /**
  * The block pass over a book file (the Markdown subset in the plan's section 2): front matter, paragraphs (a blank
  * line ends one; a line ending in two spaces or {@code \} breaks the line), {@code #} headings, {@code ---} ornaments,
- * {@code >} notes, {@code ![caption](scheme:ns:id)} illustrations on a line of their own, and {@code <!-- page -->}.
- * Anything else, fenced blocks included for now, is paragraph text, so no file can fail to load.
+ * {@code >} notes, {@code ![caption](scheme:ns:id)} illustrations on a line of their own, {@code <!-- page -->},
+ * one-level {@code -} / {@code 1.} lists, {@code {#anchor}} after a heading, and {@code ```kind argument} fenced
+ * blocks (whose lines are book text too). Anything else is paragraph text, so no file can fail to load.
  *
  * @author Mark Gottschling on 10/17/2026
  */
@@ -42,10 +44,14 @@ public final class BookParser {
     private static final Pattern FRONT_COMMENT = Pattern.compile("\\s+#(\\s.*)?$");
     private static final Pattern ORNAMENT = Pattern.compile("(-\\s*){3,}|(\\*\\s*){3,}|(_\\s*){3,}");
     private static final Pattern HEADING = Pattern.compile("(#{1,6})\\s+(.*?)\\s*#*");
+    /** a heading's trailing {@code {#anchor}} */
+    private static final Pattern ANCHOR = Pattern.compile("(.*?)\\s*\\{#([a-z0-9_-]+)}");
     private static final Pattern ILLUSTRATION =
             Pattern.compile("!\\[(.*)]\\(([a-z0-9_]+):([a-z0-9_.-]+:[a-z0-9_./-]+)\\)");
     private static final Pattern PAGE_BREAK = Pattern.compile("<!--\\s*page\\s*-->", Pattern.CASE_INSENSITIVE);
-    private static final Pattern LIST_ITEM = Pattern.compile("([-*+]|\\d+[.)])\\s+.*");
+    private static final Pattern BULLET = Pattern.compile("[-*+]\\s+(.*)");
+    private static final Pattern NUMBERED = Pattern.compile("(\\d{1,3})[.)]\\s+(.*)");
+    private static final Pattern FENCE = Pattern.compile("```\\s*([a-z0-9_]*)\\s*(.*)");
 
     private BookParser() {}
 
@@ -53,23 +59,25 @@ public final class BookParser {
         List<String> lines = List.of(source.replace("\r\n", "\n").replace('\r', '\n').split("\n", -1));
         Map<String, String> front = new LinkedHashMap<>();
         int start = frontMatter(lines, front);
+        return new BookText(Collections.unmodifiableMap(front), blocks(lines.subList(start, lines.size())));
+    }
 
+    private static List<Block> blocks(List<String> lines) {
         List<Block> blocks = new ArrayList<>();
         Paragraphs para = new Paragraphs(blocks);
-        boolean fenced = false;
-        for (int n = start; n < lines.size(); n++) {
+        for (int n = 0; n < lines.size(); n++) {
             String raw = lines.get(n);
             String line = raw.strip();
-            if (line.startsWith("```")) {
-                // fenced blocks (spotlight, recipe, ...) arrive with manual mode; until then their lines are text
-                fenced = !fenced;
+            Matcher fence = FENCE.matcher(line);
+            if (fence.matches()) {
                 para.end();
-                continue;
-            }
-            if (fenced) {
-                if (!line.isEmpty()) {
-                    para.add(raw.stripTrailing(), false, true);
+                // the body runs to the closing ``` (or the end of the file)
+                int close = n + 1;
+                while (close < lines.size() && !lines.get(close).strip().startsWith("```")) {
+                    close++;
                 }
+                blocks.add(new Block.Fence(fence.group(1), fence.group(2).strip(), blocks(lines.subList(n + 1, close))));
+                n = close;
                 continue;
             }
             if (line.isEmpty()) {
@@ -89,7 +97,14 @@ public final class BookParser {
             Matcher heading = HEADING.matcher(line);
             if (heading.matches()) {
                 para.end();
-                blocks.add(new Block.Heading(heading.group(1).length(), Inline.parse(heading.group(2))));
+                String text = heading.group(2);
+                String anchor = "";
+                Matcher a = ANCHOR.matcher(text);
+                if (a.matches()) {
+                    text = a.group(1);
+                    anchor = a.group(2);
+                }
+                blocks.add(new Block.Heading(heading.group(1).length(), Inline.parse(text), anchor));
                 continue;
             }
             Matcher picture = ILLUSTRATION.matcher(line);
@@ -104,15 +119,27 @@ public final class BookParser {
                 if (text.isEmpty()) {
                     para.end();
                 } else {
-                    para.add(withBreak(raw, text), true, false);
+                    para.add(withBreak(raw, text), Paragraphs.QUOTE);
                 }
                 continue;
             }
-            // one level of list: an item starts its own line (lists get real layout with manual mode)
-            para.add(withBreak(raw, line), para.quote, LIST_ITEM.matcher(line).matches());
+            Matcher bullet = BULLET.matcher(line);
+            Matcher numbered = NUMBERED.matcher(line);
+            if (bullet.matches()) {
+                para.end();
+                para.add(withBreak(raw, bullet.group(1)), 0);
+                continue;
+            }
+            if (numbered.matches()) {
+                para.end();
+                para.add(withBreak(raw, numbered.group(2)), Math.max(1, Integer.parseInt(numbered.group(1))));
+                continue;
+            }
+            // a plain line continues what came before it (a paragraph, a note or a list item)
+            para.add(withBreak(raw, line), para.kind);
         }
         para.end();
-        return new BookText(Collections.unmodifiableMap(front), List.copyOf(blocks));
+        return List.copyOf(blocks);
     }
 
     /** reads the front matter into {@code front}; returns the first line after it (0 when there is none) */
@@ -152,34 +179,37 @@ public final class BookParser {
         return raw.endsWith("  ") ? text + "\n" : text;
     }
 
-    /** gathers lines into the paragraph being read */
+    /** gathers lines into the paragraph, note or list item being read */
     private static final class Paragraphs {
+        static final int PARAGRAPH = -2, QUOTE = -1;
+
         private final List<Block> blocks;
         private final StringBuilder text = new StringBuilder();
-        private boolean quote;
+        /** {@link #PARAGRAPH}, {@link #QUOTE}, or a list item: 0 for a bullet, its number when numbered */
+        private int kind = PARAGRAPH;
 
         Paragraphs(List<Block> blocks) {
             this.blocks = blocks;
         }
 
-        void add(String line, boolean asQuote, boolean ownLine) {
-            if (!text.isEmpty() && asQuote != quote) {
+        void add(String line, int as) {
+            if (!text.isEmpty() && as != kind) {
                 end();
             }
-            quote = asQuote;
+            kind = as;
             if (!text.isEmpty() && text.charAt(text.length() - 1) != '\n') {
-                text.append(ownLine ? '\n' : ' ');
+                text.append(' ');
             }
             text.append(line);
         }
 
         void end() {
             if (!text.isEmpty()) {
-                String body = text.toString().stripTrailing();
-                blocks.add(new Block.Paragraph(Inline.parse(body), quote));
+                Component body = Inline.parse(text.toString().stripTrailing());
+                blocks.add(kind >= 0 ? new Block.ListItem(kind, body) : new Block.Paragraph(body, kind == QUOTE));
                 text.setLength(0);
             }
-            quote = false;
+            kind = PARAGRAPH;
         }
     }
 }

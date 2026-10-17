@@ -1,4 +1,8 @@
 {
   "gottschbooks.book.author": "автор: %s",
-  "gottschbooks.book.missing": "Текст этой книги не найден: %s"
+  "gottschbooks.book.missing": "Текст этой книги не найден: %s",
+  "gottschbooks.book.back": "< Назад",
+  "gottschbooks.book.contents": "Содержание",
+  "gottschbooks.command.open": "Открыта книга %s для игроков: %s",
+  "item.gottschbooks.book": "Книга"
 }
