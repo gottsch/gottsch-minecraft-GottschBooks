@@ -1,0 +1,127 @@
+plugins {
+    id 'eclipse'
+    id 'idea'
+    id 'maven-publish'
+    id 'net.minecraftforge.gradle' version '[6.0,6.2)'
+}
+
+// plain semver: consumers nest this by Jar-in-Jar with a range such as [1.0,2.0)
+version = mod_version
+group = mod_group_id
+base {
+    archivesName = archives_base_name
+}
+
+// Mojang ships Java 17 to end users in 1.18+, so your mod should target Java 17.
+java.toolchain.languageVersion = JavaLanguageVersion.of(17)
+
+minecraft {
+    mappings channel: mapping_channel, version: mapping_version
+    copyIdeResources = true
+
+    runs {
+        configureEach {
+            workingDirectory project.file('run')
+            property 'forge.logging.markers', 'REGISTRIES'
+            property 'forge.logging.console.level', 'debug'
+            mods {
+                "${mod_id}" {
+                    source sourceSets.main
+                }
+            }
+        }
+
+        client {
+            property 'forge.enabledGameTestNamespaces', mod_id
+        }
+
+        server {
+            property 'forge.enabledGameTestNamespaces', mod_id
+            args '--nogui'
+        }
+
+        // Headless smoke test; needs no EULA and, on 1.20.1, loads every datapack.
+        gameTestServer {
+            property 'forge.enabledGameTestNamespaces', mod_id
+        }
+    }
+}
+
+repositories {
+    mavenLocal()
+}
+
+dependencies {
+    minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+    // Deliberately nothing else at runtime: Gottsch Books is self-contained (no GottschCore) so any mod can nest it.
+
+    testImplementation platform('org.junit:junit-bom:5.10.0')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+tasks.named('processResources', ProcessResources).configure {
+    var replaceProperties = [
+            minecraft_version: minecraft_version, minecraft_version_range: minecraft_version_range,
+            forge_version: forge_version, forge_version_range: forge_version_range,
+            loader_version_range: loader_version_range,
+            mod_id: mod_id, mod_name: mod_name, mod_license: mod_license, mod_version: mod_version,
+            mod_authors: mod_authors, mod_description: mod_description,
+    ]
+    inputs.properties replaceProperties
+
+    filesMatching(['META-INF/mods.toml', 'pack.mcmeta']) {
+        expand replaceProperties + [project: project]
+    }
+}
+
+tasks.named('jar', Jar).configure {
+    manifest {
+        attributes([
+                'Specification-Title'     : mod_id,
+                'Specification-Vendor'    : mod_authors,
+                'Specification-Version'   : '1',
+                'Implementation-Title'    : project.name,
+                'Implementation-Version'  : project.jar.archiveVersion,
+                'Implementation-Vendor'   : mod_authors,
+                'Implementation-Timestamp': new Date().format("yyyy-MM-dd'T'HH:mm:ssZ")
+        ])
+    }
+
+    // reobfuscated in place, so the published (and nested) jar runs in production
+    finalizedBy 'reobfJar'
+}
+
+// Published as gottsch:gottschbooks-forge-1.20.1:<version>, the coordinate consumers nest:
+//   jarJar(group: 'gottsch', name: 'gottschbooks-forge-1.20.1', version: '[1.0,2.0)') { jarJar.pin(it, '1.0.0') }
+publishing {
+    publications {
+        register('mavenJava', MavenPublication) {
+            artifactId project.archivesBaseName
+            artifact jar
+        }
+    }
+    repositories {
+        maven {
+            name = "localMaven"
+            url "file:///${project.projectDir}/../maven"
+        }
+    }
+}
+
+// Publish to the shared ../maven repo AND mavenLocal, as GottschCore does: consumers list both,
+// and whichever holds the coordinate first wins, so publishing to one leaves the other stale.
+// The published jar is reobfuscated (SRG names): check its contents by SRG name, not source name.
+tasks.register('publishAll') {
+    group = 'publishing'
+    description = 'Publishes to the shared ../maven repo AND to mavenLocal, so neither can go stale.'
+    dependsOn 'publish', 'publishToMavenLocal'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
