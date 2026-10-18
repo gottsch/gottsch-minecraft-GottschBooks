@@ -64,3 +64,14 @@ anything breaking is 2.0.
 ./gradlew build
 ./gradlew publishAll   # to ../maven and mavenLocal
 ```
+
+## Example books
+
+`src/example/resources` holds two example books, loaded in dev runs (`./gradlew runClient`) and never put in the jar:
+
+- `example:journal`: a lore book, *The Lighthouse Keeper's Journal*.
+- `example:field_guide`: a manual, *A Field Guide to the Overworld*. It shows headings, lists, colours, notes, links,
+  spotlights, recipes, mobs, an image, and an entry locked behind the *Diamonds!* advancement.
+
+Both are given on first join. They are also a working reference for [WRITING.md](WRITING.md), and the source of the
+mod page's screenshots.
