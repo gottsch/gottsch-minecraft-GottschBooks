@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   wrong on purpose for the check to find.
 
 ### Changed
+- A line of text with glyphs taller than a line, such as a font of large pictures, grows to fit them instead of
+  overlapping the lines around it. Text with no such glyphs lays out exactly as before. Headings keep their height.
+  The field guide's *Potions and Curios* shows two double-size pictures.
+- Bold text (`**bold**`, `#` to `######` headings, category names on the contents) is thickened by half a glyph pixel
+  instead of vanilla's whole one, which filled in the gaps of letters such as *m* and *w*. Letters sit where they
+  did, so pages wrap as before.
 - A recipe with nothing to draw (its ingredients worked out in code, such as dyeing armour) shows as missing instead
   of an empty grid.
 
