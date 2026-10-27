@@ -74,17 +74,47 @@ class BookParserTest {
 
         List<Block> b = book.blocks();
         assertEquals(8, b.size(), b.toString());
-        assertEquals(new Block.Illustration("item", rl("magictreasures:white_pearl"), ""), b.get(0));
+        assertEquals(new Block.Illustration(item("item", "magictreasures:white_pearl", ""), ""), b.get(0));
         assertEquals("First line joined here.", ((Block.Paragraph) b.get(1)).text().getString());
         assertEquals("Second paragraph.", ((Block.Paragraph) b.get(2)).text().getString());
         assertInstanceOf(Block.Ornament.class, b.get(3));
         Block.Paragraph note = (Block.Paragraph) b.get(4);
         assertTrue(note.quote());
         assertEquals("[An editor's note.]", note.text().getString());
-        assertEquals(new Block.Illustration("preset", rl("magictreasures:aqua_ring"), "The ring"), b.get(5));
+        assertEquals(new Block.Illustration(item("preset", "magictreasures:aqua_ring", ""), "The ring"), b.get(5));
         assertInstanceOf(Block.PageBreak.class, b.get(6));
         assertEquals(2, ((Block.Heading) b.get(7)).level());
         assertEquals("Part two", ((Block.Heading) b.get(7)).text().getString());
+    }
+
+    @Test
+    void illustrationComponents() {
+        List<Block> b = BookParser.parse("""
+                ![Healing](item:minecraft:potion[potion_contents={potion:"minecraft:healing"}])
+                ![](item:minecraft:player_head[custom_name='"Mark (the author) ]"'])
+                ![A ring](preset:magictreasures:aqua_ring[dyed_color=1])
+                ![no close](item:minecraft:potion[x=1)
+                """).blocks();
+        assertEquals(4, b.size(), b.toString());
+        assertEquals(new Block.Illustration(item("item", "minecraft:potion",
+                "[potion_contents={potion:\"minecraft:healing\"}]"), "Healing"), b.get(0));
+        assertEquals(new Block.Illustration(item("item", "minecraft:player_head",
+                "[custom_name='\"Mark (the author) ]\"']"), ""), b.get(1));
+        assertEquals(new Block.Illustration(item("preset", "magictreasures:aqua_ring", "[dyed_color=1]"), "A ring"),
+                b.get(2));
+        // components without their closing bracket aren't an illustration
+        assertInstanceOf(Block.Paragraph.class, b.get(3));
+    }
+
+    @Test
+    void iconWithComponents() {
+        BookText book = BookParser.parse("""
+                ---
+                icon: minecraft:leather_chestplate[custom_name='{"text":"Red","color":"#FF0000"}'] # red
+                ---
+                """);
+        assertEquals("minecraft:leather_chestplate[custom_name='{\"text\":\"Red\",\"color\":\"#FF0000\"}']",
+                book.front().get("icon"));
     }
 
     @Test
@@ -227,7 +257,7 @@ class BookParserTest {
         assertEquals(List.of("x|||" + gold, "y|||#00FF00", "z|||"), runs(Inline.parse("{gold}x{#00ff00}y{}z")));
     }
 
-    private static net.minecraft.resources.ResourceLocation rl(String id) {
-        return net.minecraft.resources.ResourceLocation.parse(id);
+    private static ItemReference item(String scheme, String id, String components) {
+        return new ItemReference(scheme, net.minecraft.resources.ResourceLocation.parse(id), components);
     }
 }
