@@ -192,6 +192,7 @@ in a `/give` command (see [Items with components](#items-with-components)).
 | `*italic*`, `**bold**`, `***both***` | emphasis |
 | `{gold}text{}` | colour, by any of vanilla's 16 names: `black`, `dark_blue`, `dark_green`, `dark_aqua`, `dark_red`, `dark_purple`, `gold`, `gray`, `dark_gray`, `blue`, `green`, `aqua`, `red`, `light_purple`, `yellow`, `white` |
 | `{#d4a017}text{}` | colour, by hex |
+| `{font:mypack:icons}text{}` | a font from a resource pack (see [Fonts](#fonts)) |
 | `# Title`, `## Section`, `### Smaller` | headings. `#` and `##` are drawn larger with a rule under them; `###` and below are bold. Add `{#anchor}` at the end to make a link target |
 | `---` | an ornament between sections |
 | `> text` | an editor's note, in grey italics |
@@ -205,6 +206,27 @@ Anything not listed here (tables, HTML, nested lists) is shown as plain text too
 
 Prefer the darker colours. Light ones (`yellow`, `white`, `aqua`) are hard to read on the page, and a hex colour
 under 3:1 contrast with the paper logs a warning when the book loads.
+
+### Fonts
+
+`{font:<namespace>:<name>}` draws text in a font from `assets/<namespace>/font/<name>.json`, from your mod or any
+resource pack. A font only changes how the text looks; the book still lays it out and wraps it as text. A font stays
+on until `{}`, which ends a colour too, so a colour and a font can be set together.
+
+A font of pictures, where each character is a small image, puts icons in a line of text. Text is drawn in the
+page's ink, which darkens a picture the way it would a letter, so set the colour to `white` to keep the picture's
+own colours:
+
+```markdown
+You'll need {white}{font:mypack:icons}abc{} to craft it.
+```
+
+- Keep each picture no taller than a line (`"height": 8` or less in a `bitmap` provider). The book's lines are a
+  fixed height, so a taller one overlaps the lines around it.
+- A character the font doesn't have is drawn as a box. Give the font a `space` provider if the run has spaces.
+- An id that isn't a font draws every character as a box.
+- Vanilla's fonts work too: `{font:minecraft:alt}` is the enchanting table's script, `{font:minecraft:illageralt}`
+  the illagers'.
 
 ## Pictures and blocks
 
