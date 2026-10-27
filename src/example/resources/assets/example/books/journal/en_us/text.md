@@ -37,3 +37,19 @@ The shard is gone from the windowsill.
 The storm has passed. The sea is flat and grey, and the lamp lit on the first try.
 
 I think we have an understanding, the sea and I.
+
+---
+
+*Fifth night.*
+
+A bottle on the doorstep at dawn, stoppered with kelp.
+
+```spotlight minecraft:potion[potion_contents={potion:"minecraft:water_breathing"}]
+It smells of salt. I have not drunk it. Not yet.
+```
+
+I drew the view from the lamp room tonight, so that I would remember it.
+
+```image minecraft:textures/painting/sea.png 32 16
+*The sea, from the lamp room.*
+```

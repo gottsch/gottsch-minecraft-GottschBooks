@@ -26,7 +26,7 @@ commands and loot tables, and the build setup), both forms are shown.
 | Text | one file, read front to back | many entries, in categories |
 | Opens on | a title page: icon, title, author | the contents: landing text, then each category's entries |
 | Getting around | turning pages | clicking entries, links, Back, Contents |
-| Extras | illustrations | spotlights, recipes, images, mobs, entries locked behind advancements |
+| Extras | illustrations, spotlights, recipes, images, mobs | the same, plus entries locked behind advancements |
 
 Both flow their text onto as many pages as the window needs, one or two pages at a time, so no text runs off a page
 in any language or window size.
@@ -180,7 +180,8 @@ ignored.
 | `advancement` | entries | `ns:id`: the entry stays hidden until the player has this advancement |
 
 An `icon` (and a spotlight's item) is either an item id, `minecraft:diamond`, or a picture from an illustration
-scheme, `scheme:namespace:id` (see [Pictures and blocks](#pictures-and-blocks)).
+scheme, `scheme:namespace:id` (see [Pictures and blocks](#pictures-and-blocks)). An item may carry components, as
+in a `/give` command (see [Items with components](#items-with-components)).
 
 ## Text
 
@@ -191,6 +192,7 @@ scheme, `scheme:namespace:id` (see [Pictures and blocks](#pictures-and-blocks)).
 | `*italic*`, `**bold**`, `***both***` | emphasis |
 | `{gold}text{}` | colour, by any of vanilla's 16 names: `black`, `dark_blue`, `dark_green`, `dark_aqua`, `dark_red`, `dark_purple`, `gold`, `gray`, `dark_gray`, `blue`, `green`, `aqua`, `red`, `light_purple`, `yellow`, `white` |
 | `{#d4a017}text{}` | colour, by hex |
+| `{font:mypack:icons}text{}` | a font from a resource pack (see [Fonts](#fonts)) |
 | `# Title`, `## Section`, `### Smaller` | headings. `#` and `##` are drawn larger with a rule under them; `###` and below are bold. Add `{#anchor}` at the end to make a link target |
 | `---` | an ornament between sections |
 | `> text` | an editor's note, in grey italics |
@@ -204,6 +206,27 @@ Anything not listed here (tables, HTML, nested lists) is shown as plain text too
 
 Prefer the darker colours. Light ones (`yellow`, `white`, `aqua`) are hard to read on the page, and a hex colour
 under 3:1 contrast with the paper logs a warning when the book loads.
+
+### Fonts
+
+`{font:<namespace>:<name>}` draws text in a font from `assets/<namespace>/font/<name>.json`, from your mod or any
+resource pack. A font only changes how the text looks; the book still lays it out and wraps it as text. A font stays
+on until `{}`, which ends a colour too, so a colour and a font can be set together.
+
+A font of pictures, where each character is a small image, puts icons in a line of text. Text is drawn in the
+page's ink, which darkens a picture the way it would a letter, so set the colour to `white` to keep the picture's
+own colours:
+
+```markdown
+You'll need {white}{font:mypack:icons}abc{} to craft it.
+```
+
+- Keep each picture no taller than a line (`"height": 8` or less in a `bitmap` provider). The book's lines are a
+  fixed height, so a taller one overlaps the lines around it.
+- A character the font doesn't have is drawn as a box. Give the font a `space` provider if the run has spaces.
+- An id that isn't a font draws every character as a box.
+- Vanilla's fonts work too: `{font:minecraft:alt}` is the enchanting table's script, `{font:minecraft:illageralt}`
+  the illagers'.
 
 ## Pictures and blocks
 
@@ -220,9 +243,45 @@ The part before the first `:` is the **illustration scheme**. `item` is built in
 that aren't just an item id, such as Magic Treasures' named jewelry (`preset:magictreasures:ring_of_life_death`).
 See [Depending on Gottsch Books](#depending-on-gottsch-books).
 
-### Fenced blocks (manuals)
+If the item doesn't exist, the page shows `[item ns:id?]` in its place and the log says why.
+
+### Items with components
+
+An item reference (an illustration, a spotlight, an `icon`) may end with the item's data in `/give` syntax, for items
+that differ by more than their id: potions, enchanted books, dyed leather, player heads, a mod's item variants. On
+NeoForge 1.21.1 that's components in `[...]`; on Forge 1.20.1 it's NBT in `{...}`.
+
+```markdown
+![Healing](item:minecraft:potion[potion_contents={potion:"minecraft:healing"}])     (NeoForge 1.21.1)
+![Healing](item:minecraft:potion{Potion:"minecraft:healing"})                       (Forge 1.20.1)
+```
+
+````markdown
+```spotlight minecraft:enchanted_book[stored_enchantments={levels:{"minecraft:mending":1}}]
+```
+````
+
+````markdown
+```spotlight minecraft:enchanted_book{StoredEnchantments:[{id:"minecraft:mending",lvl:1s}]}
+```
+````
+
+```markdown
+icon: minecraft:leather_chestplate[dyed_color={rgb:11546150}]                       (NeoForge 1.21.1)
+icon: minecraft:leather_chestplate{display:{color:11546150}}                        (Forge 1.20.1)
+```
+
+Anything `/give` accepts works, so the easiest way to write one is to get a `/give` command working in game and copy
+the part after the player name. Hover over the picture to check the result: the tooltip is the item's own. A book
+that uses them needs its own text for each version, since the two syntaxes differ.
+
+They work on plain item ids and `item:`. A mod's own scheme, such as `preset:`, ignores them and logs a warning. If
+they don't parse, the page shows `[item ...?]` and the log gives the game's own error message.
+
+### Fenced blocks
 
 A fenced block names the kind and its argument on the first line. Its body is ordinary book text, drawn under it.
+Fenced blocks work in lore books and manuals.
 
 ````markdown
 ```spotlight magictreasures:topaz
@@ -234,7 +293,7 @@ The most common gem.
 
 | Block | Argument | Shows |
 |---|---|---|
-| `spotlight` | an item, or `scheme:ns:id` | the item at 2x in a frame, with a tooltip |
+| `spotlight` | an item (components allowed), or `scheme:ns:id` | the item at 2x in a frame, with a tooltip |
 | `recipe` | a recipe id | a 3x3 crafting grid and the result. Ingredients that accept several items cycle through them |
 | `image` | `ns:textures/....png`, then optionally `width height` | the image, scaled to fit the page (256x256 assumed without a size) |
 | `entity` | an entity id | the mob, slowly turning |

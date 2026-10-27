@@ -18,7 +18,6 @@
 package mod.gottsch.neo.gottschbooks.client;
 
 import mod.gottsch.neo.gottschbooks.GottschBooks;
-import mod.gottsch.neo.gottschbooks.api.Illustrations;
 import mod.gottsch.neo.gottschbooks.core.text.Block;
 import mod.gottsch.neo.gottschbooks.core.text.BookText;
 import mod.gottsch.neo.gottschbooks.core.text.Inline;
@@ -362,7 +361,7 @@ public class BookScreen extends Screen {
                     textBefore = true;
                     listBefore = true;
                 }
-                case Block.Illustration i -> Illustrations.get(i.scheme(), i.id()).ifPresent(item -> {
+                case Block.Illustration i -> Icons.stack(i.item()).ifPresentOrElse(item -> {
                     Component caption = Component.literal(i.caption().isEmpty() ? item.getHoverName().getString()
                             : i.caption()).withStyle(ChatFormatting.ITALIC);
                     int captionLines = font.split(caption, textW).size();
@@ -370,7 +369,7 @@ public class BookScreen extends Screen {
                     line.item = item;
                     line.label = caption;
                     line.color = NOTE;
-                });
+                }, () -> missing("item", i.item().text()));
                 case Block.PageBreak b -> {
                     add(Kind.BREAK, 0);
                     textBefore = false;

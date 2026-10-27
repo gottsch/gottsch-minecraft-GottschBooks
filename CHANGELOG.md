@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-10-26
+
+### Added
+- Items with components: an illustration, spotlight or `icon` may end with `/give`-style components, e.g.
+  `![Healing](item:minecraft:potion[potion_contents={potion:"minecraft:healing"}])`. Parsed with the game's own item
+  parser against the world's registries, so potions, enchanted books, dyed items, player heads and mod item variants
+  draw as themselves (#1).
+- Fonts: `{font:mypack:icons}text{}` draws a run of text in a resource pack font, such as a font of pictures for
+  icons in a line of text (#1). `{}` ends a font as it ends a colour.
+- Example books: a *Potions and Curios* entry in the field guide (with an `example:icons` picture font), and a
+  fifth night in the journal with a spotlight and an image.
+
+### Changed
+- An illustration whose item doesn't exist now shows `[item ...?]` on the page, as fenced blocks do, instead of
+  being left out.
+- WRITING.md: fenced blocks (spotlights, recipes, images, mobs) are documented for lore books too. They always
+  worked there.
+
 ## 2026-10-17
 
 ### Added
