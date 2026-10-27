@@ -15,6 +15,12 @@ base {
 // Mojang ships Java 17 to end users in 1.18+, so your mod should target Java 17.
 java.toolchain.languageVersion = JavaLanguageVersion.of(17)
 
+// Example books (src/example/resources) for trying the reader and taking screenshots. Resources only; added to the
+// dev runs below, and left out of the jar. Players get both books on first join.
+sourceSets {
+    example {}
+}
+
 minecraft {
     mappings channel: mapping_channel, version: mapping_version
     // opens ClientAdvancements.progress for advancement-locked manual entries
@@ -29,6 +35,8 @@ minecraft {
             mods {
                 "${mod_id}" {
                     source sourceSets.main
+                    // the example books: in dev runs only, never in the jar
+                    source sourceSets.example
                 }
             }
         }

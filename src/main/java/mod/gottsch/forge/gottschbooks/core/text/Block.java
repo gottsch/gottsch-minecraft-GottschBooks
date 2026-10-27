@@ -41,8 +41,11 @@ public sealed interface Block {
     /** {@code ---}: an ornament between sections */
     record Ornament() implements Block {}
 
-    /** {@code ![caption](scheme:namespace:path)}; an empty caption means "the item's own name" */
-    record Illustration(String scheme, ResourceLocation id, String caption) implements Block {}
+    /**
+     * {@code ![caption](scheme:namespace:path)}, optionally with NBT after the path; an empty caption means "the
+     * item's own name"
+     */
+    record Illustration(ItemReference item, String caption) implements Block {}
 
     /** {@code <!-- page -->}: the next block starts a new page */
     record PageBreak() implements Block {}
