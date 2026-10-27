@@ -82,7 +82,7 @@ class BookParserTest {
         assertTrue(note.quote());
         assertEquals("[An editor's note.]", note.text().getString());
         assertEquals(new Block.Illustration(item("preset", "magictreasures:aqua_ring", ""), "The ring"), b.get(5));
-        assertInstanceOf(Block.PageBreak.class, b.get(6));
+        assertEquals(new Block.PageBreak(""), b.get(6));
         assertEquals(2, ((Block.Heading) b.get(7)).level());
         assertEquals("Part two", ((Block.Heading) b.get(7)).text().getString());
     }
@@ -278,6 +278,139 @@ class BookParserTest {
         // never closed, or not a resource location: plain text
         assertEquals("{font:mypack:icons}abc", Inline.parse("{font:mypack:icons}abc").getString());
         assertEquals("{font:Bad Name}x{}", Inline.parse("{font:Bad Name}x{}").getString());
+    }
+
+    @Test
+    void pageBreaks() {
+        List<Block> b = BookParser.parse("""
+                one
+                {page}
+                two
+                {page:single}
+                three
+                { page : Spread }
+                {page:wide}
+                <!-- page -->
+                a {page} in a line is text
+                \\{page}
+                """).blocks();
+        assertEquals(new Block.PageBreak(""), b.get(1));
+        assertEquals(new Block.PageBreak("single"), b.get(3));
+        // "{ page" isn't the marker, so that line is text
+        assertInstanceOf(Block.Paragraph.class, b.get(4));
+        assertEquals(new Block.PageBreak("wide"), b.get(5), "an unknown style is kept for the check to report");
+        assertEquals(new Block.PageBreak(""), b.get(6));
+        assertEquals("a {page} in a line is text {page}", ((Block.Paragraph) b.get(7)).text().getString());
+        assertEquals(8, b.size(), b.toString());
+    }
+
+    private static Block.Table table(String source) {
+        List<Block> blocks = BookParser.parse(source).blocks();
+        assertEquals(1, blocks.size(), blocks.toString());
+        return assertInstanceOf(Block.Table.class, blocks.getFirst());
+    }
+
+    private static List<String> texts(List<Block.Table.Cell> row) {
+        return row.stream().map(cell -> cell.text().getString()).toList();
+    }
+
+    @Test
+    void tableBasics() {
+        Block.Table t = table("""
+                | Ore | Found at | Mine with |
+                |---|:---:|--:|
+                | Coal | 0 to 192 | **wood** |
+                | Diamond | -64 to 16 | iron |
+                """);
+        assertEquals(List.of(Block.Table.Align.LEFT, Block.Table.Align.CENTER, Block.Table.Align.RIGHT), t.align());
+        assertEquals(List.of("Ore", "Found at", "Mine with"), texts(t.header()));
+        assertEquals(2, t.rows().size());
+        assertEquals(List.of("Coal", "0 to 192", "wood"), texts(t.rows().getFirst()));
+        assertEquals(List.of("wood|b||"), runs(t.rows().getFirst().get(2).text()));
+        assertTrue(t.problems().isEmpty());
+    }
+
+    @Test
+    void tableWithoutOuterPipesAndEscapes() {
+        Block.Table t = table("""
+                a | b
+                --- | ---
+                x \\| y | z
+                """);
+        assertEquals(List.of("a", "b"), texts(t.header()));
+        assertEquals(List.of("x | y", "z"), texts(t.rows().getFirst()));
+    }
+
+    @Test
+    void tableNeedsItsSeparator() {
+        List<Block> blocks = BookParser.parse("| a | b |\n| c | d |").blocks();
+        assertInstanceOf(Block.Paragraph.class, blocks.getFirst());
+        // a separator with a different number of cells isn't one
+        assertInstanceOf(Block.Paragraph.class, BookParser.parse("| a | b |\n|---|").blocks().getFirst());
+        // a plain --- is still an ornament
+        List<Block> ornament = BookParser.parse("text\n\n---\n\nmore").blocks();
+        assertInstanceOf(Block.Ornament.class, ornament.get(1));
+    }
+
+    @Test
+    void tableRaggedRows() {
+        Block.Table t = table("""
+                | a | b | c |
+                |---|---|---|
+                | 1 |
+                | 1 | 2 | 3 | 4 |
+                """);
+        assertEquals(List.of("1", "", ""), texts(t.rows().get(0)));
+        assertEquals(List.of("1", "2", "3"), texts(t.rows().get(1)));
+        assertEquals(2, t.problems().size());
+        assertTrue(t.problems().get(0).startsWith("row 1 has 1 cells"), t.problems().get(0));
+    }
+
+    @Test
+    void tableIcons() {
+        Block.Table t = table("""
+                | | |
+                |---|---|
+                | ![](item:minecraft:diamond_ore) ![x](item:minecraft:deepslate_diamond_ore) Diamond | ![](item:minecraft:iron_pickaxe) |
+                | ![](item:minecraft:potion[potion_contents={potion:"minecraft:healing"}]) Healing | text ![](item:minecraft:stone) |
+                """);
+        assertTrue(t.header().isEmpty(), "an all-blank header isn't drawn");
+        Block.Table.Cell diamond = t.rows().get(0).get(0);
+        assertEquals(List.of(item("item", "minecraft:diamond_ore", ""), item("item", "minecraft:deepslate_diamond_ore", "")),
+                diamond.icons());
+        assertEquals("Diamond", diamond.text().getString());
+        Block.Table.Cell pick = t.rows().get(0).get(1);
+        assertEquals(1, pick.icons().size());
+        assertEquals("", pick.text().getString());
+        assertEquals(item("item", "minecraft:potion", "[potion_contents={potion:\"minecraft:healing\"}]"),
+                t.rows().get(1).get(0).icons().getFirst());
+        // only leading icons are icons
+        Block.Table.Cell late = t.rows().get(1).get(1);
+        assertTrue(late.icons().isEmpty());
+        assertEquals("text ![](item:minecraft:stone)", late.text().getString());
+    }
+
+    @Test
+    void tableEndsAndNests() {
+        List<Block> blocks = BookParser.parse("""
+                | a |
+                |---|
+                | 1 |
+                after
+
+                ```spotlight minecraft:diamond
+                | b |
+                |---|
+                | 2 |
+                ```
+                """).blocks();
+        assertInstanceOf(Block.Table.class, blocks.get(0));
+        assertEquals("after", ((Block.Paragraph) blocks.get(1)).text().getString());
+        Block.Fence fence = assertInstanceOf(Block.Fence.class, blocks.get(2));
+        assertInstanceOf(Block.Table.class, fence.body().getFirst());
+        // a list still follows a table
+        List<Block> list = BookParser.parse("| a |\n|---|\n| 1 |\n\n- item").blocks();
+        assertInstanceOf(Block.ListItem.class, list.get(1));
     }
 
     private static ItemReference item(String scheme, String id, String components) {

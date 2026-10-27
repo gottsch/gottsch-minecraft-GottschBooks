@@ -34,7 +34,15 @@ The shard is gone from the windowsill.
 
 *Fourth night.*
 
-The storm has passed. The sea is flat and grey, and the lamp lit on the first try.
+The storm has passed. The sea is flat and grey, and the lamp lit on the first try. I have written up the tides for
+the week, as the keeper before me did:
+
+| Day | High water | Low water |
+|---|:---:|:---:|
+| Monday | before dawn | mid-morning |
+| Tuesday | dawn | noon |
+| Wednesday | mid-morning | early afternoon |
+| Thursday | noon | {dark_aqua}dusk{} |
 
 I think we have an understanding, the sea and I.
 

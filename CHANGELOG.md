@@ -15,8 +15,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `/gottschbooks check [book]`: lists what is wrong in every loaded book (or one) in chat and the log: missing
   items, recipes, images, mobs and fonts, components that don't parse, broken `entry:` links and anchors, unknown
   categories and fenced blocks, and missing `_index.md`, `text.md` or skin textures. Runs on the client, for anyone.
-- Example books: a *Furnaces and Workstations* entry in the field guide, and `example:mistakes`, a manual that is
-  wrong on purpose for the check to find.
+- Tables: GitHub-style pipe tables, with per-column alignment. A cell may start with item icons (`![](item:ns:id)`,
+  components allowed), drawn at 16 px with tooltips. Columns share the page by how much text they hold, rows never
+  split across pages, and a table that continues on the next page repeats its header. A blank header row draws no
+  header. `\|` is a literal pipe.
+- Page styles: one *single* page as wide as the book, for wide tables, or the usual two side by side (*spread*).
+  `{page:single}` and `{page:spread}` on a line of their own break the page and switch the style until the next one;
+  `pages: single` in book.md or an entry's front matter sets the style the text starts in. Pages pair up afresh after
+  each switch.
+- `{page}` breaks the page, in the same braces as colours and fonts. `<!-- page -->` still works.
+- `/gottschbooks check` also reports table rows with the wrong number of cells, icons after a cell's text, empty
+  tables, and `pages` values and `{page:...}` styles other than `single` and `spread`.
+- Example books: *Furnaces and Workstations* and *Ores at a Glance* (two pages of prose, then a single wide page of
+  tables with icons, then two pages again) in the field guide, a tide table in the journal, and `example:mistakes`, a manual that is wrong on purpose for the check to
+  find.
 
 ### Changed
 - A line of text with glyphs taller than a line, such as a font of large pictures, grows to fit them instead of

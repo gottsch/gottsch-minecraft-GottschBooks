@@ -70,11 +70,12 @@ anything breaking is 2.0.
 `src/example/resources` holds three example books, loaded in dev runs (`./gradlew runClient`) and never put in the
 jar:
 
-- `example:journal`: a lore book, *The Lighthouse Keeper's Journal*. It shows illustrations, ornaments, a spotlight
-  and an image.
+- `example:journal`: a lore book, *The Lighthouse Keeper's Journal*. It shows illustrations, ornaments, a spotlight,
+  an image and a table.
 - `example:field_guide`: a manual, *A Field Guide to the Overworld*. It shows headings, lists, colours, notes, links,
-  spotlights, recipes of every vanilla kind (*Furnaces and Workstations*), mobs, an image, items with components and
-  a picture font (*Potions and Curios*), and an entry locked behind the *Diamonds!* advancement.
+  spotlights, recipes of every vanilla kind (*Furnaces and Workstations*), tables with item icons on a single wide
+  page (*Ores at a Glance*), mobs, an image, items with components and a picture font (*Potions and Curios*), and an
+  entry locked behind the *Diamonds!* advancement.
 - `example:mistakes`: a manual that is wrong on purpose, for `/gottschbooks check example:mistakes` to find.
 
 The first two are given on first join. They are also a working reference for [WRITING.md](WRITING.md), and the source of the
