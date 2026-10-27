@@ -23,21 +23,24 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
 import net.minecraft.network.chat.TextColor;
+import net.minecraft.resources.ResourceLocation;
 
 import java.util.Optional;
 import java.util.regex.Pattern;
 
 /**
- * The inline pass: {@code **bold**}, {@code *italic*}, {@code {gold}colour{}}, {@code {#d4a017}colour{}} and
- * {@code [text](entry:id)} / {@code [text](https://...)} links, with
+ * The inline pass: {@code **bold**}, {@code *italic*}, {@code {gold}colour{}}, {@code {#d4a017}colour{}},
+ * {@code {font:ns:id}font{}} and {@code [text](entry:id)} / {@code [text](https://...)} links, with
  * {@code \} escaping the next character. A marker with nothing to close it is plain text, so a stray {@code *} or
- * {@code {} never breaks a book. Colours don't nest: a second colour replaces the first until {@code {}}.
+ * {@code {} never breaks a book. Colours don't nest: a second colour replaces the first until {@code {}}. A font is
+ * held apart from the colour, so {@code {white}{font:ns:id}} sets both, and one {@code {}} ends both.
  *
  * @author Mark Gottschling on 10/17/2026
  */
 public final class Inline {
     private static final Pattern HEX = Pattern.compile("#[0-9a-fA-F]{6}");
     private static final String ESCAPABLE = "\\*_{}[]()!#>-`<";
+    private static final String FONT = "font:";
 
     private Inline() {}
 
@@ -75,15 +78,22 @@ public final class Inline {
                 i = link.end();
             } else if (c == '{') {
                 int end = text.indexOf('}', i);
-                Optional<TextColor> colour = end < 0 ? Optional.empty() : colour(text.substring(i + 1, end));
-                if (end == i + 1 && style.getColor() != null) {
-                    // {} ends the colour
+                String name = end < 0 ? "" : text.substring(i + 1, end);
+                Optional<TextColor> colour = colour(name);
+                Optional<ResourceLocation> font = font(name);
+                boolean closed = text.indexOf("{}", end) >= 0;
+                if (end == i + 1 && (style.getColor() != null || !style.getFont().equals(Style.DEFAULT_FONT))) {
+                    // {} ends the colour and the font
                     flush(root, run, style);
-                    style = style.withColor((TextColor) null);
+                    style = style.withColor((TextColor) null).withFont(null);
                     i = end + 1;
-                } else if (colour.isPresent() && text.indexOf("{}", end) >= 0) {
+                } else if (colour.isPresent() && closed) {
                     flush(root, run, style);
                     style = style.withColor(colour.get());
+                    i = end + 1;
+                } else if (font.isPresent() && closed) {
+                    flush(root, run, style);
+                    style = style.withFont(font.get());
                     i = end + 1;
                 } else {
                     run.append(c);
@@ -141,6 +151,12 @@ public final class Inline {
         }
         ChatFormatting formatting = ChatFormatting.getByName(name);
         return formatting != null && formatting.isColor() ? Optional.of(TextColor.fromLegacyFormat(formatting)) : Optional.empty();
+    }
+
+    /** {@code font:mypack:icons}: the font a run is drawn in, as in a resource pack's {@code font/} folder */
+    public static Optional<ResourceLocation> font(String name) {
+        return name.startsWith(FONT) ? Optional.ofNullable(ResourceLocation.tryParse(name.substring(FONT.length())))
+                : Optional.empty();
     }
 
     private static int starRun(String text, int from) {

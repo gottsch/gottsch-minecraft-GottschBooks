@@ -32,7 +32,7 @@ import java.util.regex.Pattern;
 /**
  * The block pass over a book file (the Markdown subset in the plan's section 2): front matter, paragraphs (a blank
  * line ends one; a line ending in two spaces or {@code \} breaks the line), {@code #} headings, {@code ---} ornaments,
- * {@code >} notes, {@code ![caption](scheme:ns:id)} illustrations on a line of their own, {@code <!-- page -->},
+ * {@code >} notes, {@code ![caption](scheme:ns:id{nbt})} illustrations on a line of their own, {@code <!-- page -->},
  * one-level {@code -} / {@code 1.} lists, {@code {#anchor}} after a heading, and {@code ```kind argument} fenced
  * blocks (whose lines are book text too). Anything else is paragraph text, so no file can fail to load.
  *
@@ -46,8 +46,9 @@ public final class BookParser {
     private static final Pattern HEADING = Pattern.compile("(#{1,6})\\s+(.*?)\\s*#*");
     /** a heading's trailing {@code {#anchor}} */
     private static final Pattern ANCHOR = Pattern.compile("(.*?)\\s*\\{#([a-z0-9_-]+)}");
+    /** the NBT, if any, runs to the last {@code }} before the closing {@code )}, so it may hold both */
     private static final Pattern ILLUSTRATION =
-            Pattern.compile("!\\[(.*)]\\(([a-z0-9_]+):([a-z0-9_.-]+:[a-z0-9_./-]+)\\)");
+            Pattern.compile("!\\[(.*?)]\\(([a-z0-9_]+):([a-z0-9_.-]+:[a-z0-9_./-]+)(\\{.*})?\\)");
     private static final Pattern PAGE_BREAK = Pattern.compile("<!--\\s*page\\s*-->", Pattern.CASE_INSENSITIVE);
     private static final Pattern BULLET = Pattern.compile("[-*+]\\s+(.*)");
     private static final Pattern NUMBERED = Pattern.compile("(\\d{1,3})[.)]\\s+(.*)");
@@ -110,8 +111,9 @@ public final class BookParser {
             Matcher picture = ILLUSTRATION.matcher(line);
             if (picture.matches()) {
                 para.end();
-                blocks.add(new Block.Illustration(picture.group(2), new ResourceLocation(picture.group(3)),
-                        picture.group(1).strip()));
+                ItemReference item = new ItemReference(picture.group(2), new ResourceLocation(picture.group(3)),
+                        picture.group(4) == null ? "" : picture.group(4));
+                blocks.add(new Block.Illustration(item, picture.group(1).strip()));
                 continue;
             }
             if (line.startsWith(">")) {
