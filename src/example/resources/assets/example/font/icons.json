@@ -1,0 +1,9 @@
+{
+  "providers": [
+    { "type": "space", "advances": { " ": 4 } },
+    { "type": "bitmap", "file": "minecraft:item/diamond.png", "height": 8, "ascent": 7, "chars": ["d"] },
+    { "type": "bitmap", "file": "minecraft:item/emerald.png", "height": 8, "ascent": 7, "chars": ["e"] },
+    { "type": "bitmap", "file": "minecraft:item/gold_ingot.png", "height": 8, "ascent": 7, "chars": ["g"] },
+    { "type": "bitmap", "file": "minecraft:item/redstone.png", "height": 8, "ascent": 7, "chars": ["r"] }
+  ]
+}

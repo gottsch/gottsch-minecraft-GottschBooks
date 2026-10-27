@@ -257,6 +257,29 @@ class BookParserTest {
         assertEquals(List.of("x|||" + gold, "y|||#00FF00", "z|||"), runs(Inline.parse("{gold}x{#00ff00}y{}z")));
     }
 
+    /** each styled run of {@code c}, as "text|font|colour" */
+    private static List<String> fonts(Component c) {
+        List<String> out = new ArrayList<>();
+        c.visit((style, text) -> {
+            out.add(text + "|" + style.getFont() + "|" + (style.getColor() == null ? "" : style.getColor().serialize()));
+            return Optional.empty();
+        }, Style.EMPTY);
+        return out;
+    }
+
+    @Test
+    void fontRuns() {
+        assertEquals(List.of("a |minecraft:default|", "abc|mypack:icons|", " b|minecraft:default|"),
+                fonts(Inline.parse("a {font:mypack:icons}abc{} b")));
+        // a colour and a font together; one {} ends both
+        assertEquals(List.of("abc|mypack:icons|white", "z|minecraft:default|"),
+                fonts(Inline.parse("{white}{font:mypack:icons}abc{}z")));
+        assertEquals(List.of("x|minecraft:alt|"), fonts(Inline.parse("{font:alt}x{}")));
+        // never closed, or not a resource location: plain text
+        assertEquals("{font:mypack:icons}abc", Inline.parse("{font:mypack:icons}abc").getString());
+        assertEquals("{font:Bad Name}x{}", Inline.parse("{font:Bad Name}x{}").getString());
+    }
+
     private static ItemReference item(String scheme, String id, String components) {
         return new ItemReference(scheme, net.minecraft.resources.ResourceLocation.parse(id), components);
     }

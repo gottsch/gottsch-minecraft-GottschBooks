@@ -29,3 +29,9 @@ Craft leather armour with any dye to colour it.
 ![A traveller's head](item:minecraft:player_head[profile={name:"MHF_Alex"}])
 
 A player head shows the skin of the player it names.
+
+## Pictures in Text {#fonts}
+
+A resource pack font can draw pictures in a line of text: {white}{font:example:icons}d e g r{} are diamond,
+emerald, gold and redstone, from the example pack's icons font. In {font:minecraft:alt}the enchanting
+table's script{}, a font changes the letters themselves.

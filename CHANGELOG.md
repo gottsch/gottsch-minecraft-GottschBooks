@@ -12,8 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `![Healing](item:minecraft:potion[potion_contents={potion:"minecraft:healing"}])`. Parsed with the game's own item
   parser against the world's registries, so potions, enchanted books, dyed items, player heads and mod item variants
   draw as themselves (#1).
-- Example books: a *Potions and Curios* entry in the field guide, and a fifth night in the journal with a spotlight
-  and an image.
+- Fonts: `{font:mypack:icons}text{}` draws a run of text in a resource pack font, such as a font of pictures for
+  icons in a line of text (#1). `{}` ends a font as it ends a colour.
+- Example books: a *Potions and Curios* entry in the field guide (with an `example:icons` picture font), and a
+  fifth night in the journal with a spotlight and an image.
 
 ### Changed
 - An illustration whose item doesn't exist now shows `[item ...?]` on the page, as fenced blocks do, instead of
