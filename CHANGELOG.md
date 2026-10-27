@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - Unreleased
+
+### Added
+- Recipe blocks draw each kind of recipe the way its block does: smelting, blasting, smoking and campfire cooking
+  show the input over its furnace with the cooking time; stonecutting shows the stonecutter; smithing shows
+  template, base and addition. Any other recipe, a mod's machine included, shows its ingredients in a row with its
+  station. Before, every recipe was drawn as a crafting grid.
+- `/gottschbooks check [book]`: lists what is wrong in every loaded book (or one) in chat and the log: missing
+  items, recipes, images, mobs and fonts, components that don't parse, broken `entry:` links and anchors, unknown
+  categories and fenced blocks, and missing `_index.md`, `text.md` or skin textures. Runs on the client, for anyone.
+- Example books: a *Furnaces and Workstations* entry in the field guide, and `example:mistakes`, a manual that is
+  wrong on purpose for the check to find.
+
+### Changed
+- A recipe with nothing to draw (its ingredients worked out in code, such as dyeing armour) shows as missing instead
+  of an empty grid.
+
 ## [1.1.0] - 2026-10-26
 
 ### Added

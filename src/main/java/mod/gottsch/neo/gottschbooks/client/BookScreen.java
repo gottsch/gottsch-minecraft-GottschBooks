@@ -36,15 +36,11 @@ import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.crafting.Ingredient;
-import net.minecraft.world.item.crafting.Recipe;
-import net.minecraft.world.item.crafting.ShapedRecipe;
 import org.lwjgl.glfw.GLFW;
 
 import javax.annotation.Nullable;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
@@ -165,8 +161,6 @@ public class BookScreen extends Screen {
             this.section = section;
         }
     }
-
-    private record RecipeView(List<ItemStack[]> grid, ItemStack result) {}
 
     private record ImageView(ResourceLocation texture, int texW, int texH, int w, int h) {}
 
@@ -394,7 +388,9 @@ public class BookScreen extends Screen {
                 case "recipe" -> {
                     Optional<RecipeView> recipe = recipe(fence.argument());
                     if (recipe.isPresent()) {
-                        Line line = add(Kind.RECIPE, 3 * ROW_H + 10);
+                        RecipeView view = recipe.get();
+                        boolean under = !view.station().isEmpty() || view.note() != null;
+                        Line line = add(Kind.RECIPE, (view.rows() + (under ? 1 : 0)) * ROW_H + 10);
                         line.recipe = recipe.get();
                     } else {
                         missing("recipe", fence.argument());
@@ -530,19 +526,8 @@ public class BookScreen extends Screen {
         if (id == null || minecraft.level == null) {
             return Optional.empty();
         }
-        return minecraft.level.getRecipeManager().byKey(id).map(holder -> {
-            Recipe<?> recipe = holder.value();
-            List<Ingredient> ingredients = recipe.getIngredients();
-            int width = recipe instanceof ShapedRecipe shaped ? shaped.getWidth() : 3;
-            List<ItemStack[]> grid = new ArrayList<>(Arrays.asList(new ItemStack[9][]));
-            for (int i = 0; i < ingredients.size() && i < 9; i++) {
-                int cell = (i / width) * 3 + i % width;
-                if (cell < 9) {
-                    grid.set(cell, ingredients.get(i).getItems());
-                }
-            }
-            return new RecipeView(grid, recipe.getResultItem(minecraft.level.registryAccess()));
-        });
+        return minecraft.level.getRecipeManager().byKey(id)
+                .flatMap(holder -> RecipeView.of(holder.value(), minecraft.level.registryAccess()));
     }
 
     /** {@code ns:textures/....png [width height]}; the size is the texture's, 256x256 when not given */
@@ -997,24 +982,38 @@ public class BookScreen extends Screen {
         itemHits.add(new ItemHit(ix, iy, size, line.item));
     }
 
-    /** a 3x3 grid, an arrow and the result; ingredients that accept several items cycle through them */
+    /**
+     * the input slots, the station under them, an arrow (with the note under it) and the result; ingredients that
+     * accept several items cycle through them
+     */
     private void drawRecipe(GuiGraphics g, RecipeView recipe, int x, int y) {
-        int gridW = 3 * ROW_H, total = gridW + 22 + ROW_H;
+        int columns = recipe.columns(), gridW = columns * ROW_H, gridH = recipe.rows() * ROW_H, total = gridW + 22 + ROW_H;
         int gx = x + (textW - total) / 2, gy = y + 4;
         long tick = System.currentTimeMillis() / 1000;
-        for (int cell = 0; cell < 9; cell++) {
-            int cx = gx + (cell % 3) * ROW_H, cy = gy + (cell / 3) * ROW_H;
+        for (int cell = 0; cell < recipe.slots().size(); cell++) {
+            int cx = gx + (cell % columns) * ROW_H, cy = gy + (cell / columns) * ROW_H;
             g.fill(cx, cy, cx + ROW_H - 1, cy + ROW_H - 1, SLOT);
-            ItemStack[] options = recipe.grid().get(cell);
+            ItemStack[] options = recipe.slots().get(cell);
             if (options != null && options.length > 0) {
                 ItemStack item = options[(int) (tick % options.length)];
                 g.renderItem(item, cx + 1, cy + 1);
                 itemHits.add(new ItemHit(cx + 1, cy + 1, 16, item));
             }
         }
-        int ax = gx + gridW + 5, ay = gy + ROW_H + 4;
+        if (!recipe.station().isEmpty()) {
+            // under the inputs, where a furnace's fuel would go
+            int sx = gx + (gridW - 16) / 2, sy = gy + gridH + 1;
+            g.renderItem(recipe.station(), sx, sy);
+            itemHits.add(new ItemHit(sx, sy, 16, recipe.station()));
+        }
+        int middle = gy + (gridH - ROW_H) / 2;
+        int ax = gx + gridW + 5, ay = middle + 4;
         g.drawString(font, "→", ax, ay, INK, false);
-        int rx = gx + gridW + 22, ry = gy + ROW_H;
+        if (recipe.note() != null) {
+            int noteX = gx + gridW + 11 - font.width(recipe.note()) / 2;
+            g.drawString(font, recipe.note(), noteX, middle + ROW_H + 5, NOTE, false);
+        }
+        int rx = gx + gridW + 22, ry = middle;
         g.fill(rx, ry, rx + ROW_H - 1, ry + ROW_H - 1, SLOT);
         g.renderItem(recipe.result(), rx + 1, ry + 1);
         g.renderItemDecorations(font, recipe.result(), rx + 1, ry + 1);
