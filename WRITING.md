@@ -222,8 +222,9 @@ own colours:
 You'll need {white}{font:mypack:icons}abc{} to craft it.
 ```
 
-- Keep each picture no taller than a line (`"height": 8` or less in a `bitmap` provider). The book's lines are a
-  fixed height, so a taller one overlaps the lines around it.
+- A picture taller than a line (`"height"` over 8 in a `bitmap` provider, or `"ascent"` over 7) is fine in a
+  paragraph or a list: its line grows to fit it, so it doesn't overlap the lines around it. In a heading, keep
+  pictures to `"height": 8`; heading lines keep their height.
 - A character the font doesn't have is drawn as a box. Give the font a `space` provider if the run has spaces.
 - An id that isn't a font draws every character as a box.
 - Vanilla's fonts work too: `{font:minecraft:alt}` is the enchanting table's script, `{font:minecraft:illageralt}`

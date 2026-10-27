@@ -35,3 +35,7 @@ A player head shows the skin of the player it names.
 A resource pack font can draw pictures in a line of text: {white}{font:example:icons}d e g r{} are diamond,
 emerald, gold and redstone, from the example pack's icons font. In {font:minecraft:alt}the enchanting
 table's script{}, a font changes the letters themselves.
+
+Pictures taller than a line get the room they need: {white}{font:example:icons}D E{} are the same diamond and
+emerald at twice the size, and the line they're on grows to fit them, so they never overlap the lines around them.
+The lines after them are back to their usual height.

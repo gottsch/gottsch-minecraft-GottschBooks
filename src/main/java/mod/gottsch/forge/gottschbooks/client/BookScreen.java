@@ -23,6 +23,7 @@ import mod.gottsch.forge.gottschbooks.core.text.BookText;
 import mod.gottsch.forge.gottschbooks.core.text.Inline;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.font.glyphs.BakedGlyph;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.client.gui.screens.inventory.PageButton;
@@ -143,6 +144,8 @@ public class BookScreen extends Screen {
         FormattedCharSequence text;
         int color = INK;
         int indent;
+        /** how far a text line's text sits below the line's top, to make room for tall glyphs above it */
+        int lift;
         String bullet;
         ItemStack item = ItemStack.EMPTY;
         Component label;
@@ -428,11 +431,13 @@ public class BookScreen extends Screen {
         }
 
         /** wrapped text; a list item draws {@code bullet} and hangs its lines after it */
-        /** a {@code #}/{@code ##} heading: bold, drawn at {@code scale}, with a faint rule under its last line */
+        /**
+         * a {@code #}/{@code ##} heading: drawn at {@code scale}, bold by {@link #drawHeading}, with a faint rule under
+         * its last line
+         */
         List<Line> heading(Component text, float scale) {
             List<Line> added = new ArrayList<>();
-            List<FormattedCharSequence> rows = font.split(Component.empty().withStyle(ChatFormatting.BOLD).append(text),
-                    (int) (textW / scale));
+            List<FormattedCharSequence> rows = font.split(text, (int) (textW / scale));
             for (int i = 0; i < rows.size(); i++) {
                 boolean last = i == rows.size() - 1;
                 Line line = add(Kind.HEADING, (int) Math.ceil(LINE_H * scale) + (last ? 4 : 0));
@@ -448,7 +453,9 @@ public class BookScreen extends Screen {
             int indent = bullet == null ? 0 : font.width(bullet + " ");
             List<Line> added = new ArrayList<>();
             for (FormattedCharSequence seq : font.split(text, textW - indent)) {
-                Line line = add(Kind.TEXT, LINE_H);
+                int[] overhang = overhang(seq);
+                Line line = add(Kind.TEXT, LINE_H + overhang[0] + overhang[1]);
+                line.lift = overhang[0];
                 line.text = seq;
                 line.color = color;
                 line.indent = indent;
@@ -459,6 +466,24 @@ public class BookScreen extends Screen {
             }
             return added;
         }
+    }
+
+    /**
+     * how far {@code seq}'s glyphs reach above the line's text and below it: room a font of tall pictures needs, so
+     * they don't overlap the lines around them. Only other fonts are measured, so plain text keeps its fixed height.
+     */
+    private int[] overhang(FormattedCharSequence seq) {
+        // a default glyph's box: from the top of a capital (0) to the bottom of a descender (8)
+        float[] reach = {0F, 8F};
+        seq.accept((index, style, codepoint) -> {
+            if (!style.getFont().equals(Style.DEFAULT_FONT)) {
+                BakedGlyph glyph = font.getFontSet(style.getFont()).getGlyph(codepoint);
+                reach[0] = Math.min(reach[0], glyph.up);
+                reach[1] = Math.max(reach[1], glyph.down);
+            }
+            return true;
+        });
+        return new int[] {(int) Math.ceil(-reach[0]), (int) Math.ceil(reach[1] - 8F)};
     }
 
     private List<Line> flow() {
@@ -841,18 +866,15 @@ public class BookScreen extends Screen {
         for (Line line : lines) {
             switch (line.kind) {
                 case TEXT -> {
+                    int ty = y + line.lift;
                     if (line.bullet != null) {
-                        g.drawString(font, line.bullet, x, y, line.color, false);
+                        g.drawString(font, line.bullet, x, ty, line.color, false);
                     }
-                    g.drawString(font, line.text, x + line.indent, y, line.color, false);
-                    textHits.add(new TextHit(x + line.indent, y, line.text));
+                    drawText(g, line.text, x + line.indent, ty, line.color);
+                    textHits.add(new TextHit(x + line.indent, ty, line.text));
                 }
                 case HEADING -> {
-                    g.pose().pushPose();
-                    g.pose().translate(x, y, 0);
-                    g.pose().scale(line.scale, line.scale, 1F);
-                    g.drawString(font, line.text, 0, 0, INK, false);
-                    g.pose().popPose();
+                    drawHeading(g, line, x, y);
                     if (line.rule) {
                         g.fill(x, y + line.height - 2, x + textW, y + line.height - 1, NOTE & 0x60FFFFFF);
                     }
@@ -872,6 +894,61 @@ public class BookScreen extends Screen {
             }
             y += line.height;
         }
+    }
+
+    /**
+     * A heading line, drawn twice to make it bold. Vanilla bold doubles each glyph one glyph pixel to the right, which,
+     * scaled up, closes the one-pixel gaps in letters such as m and w. This doubles it half a glyph pixel to the right
+     * instead (at least one screen pixel), so the letters thicken and their gaps stay open.
+     */
+    private void drawHeading(GuiGraphics g, Line line, int x, int y) {
+        g.pose().pushPose();
+        g.pose().translate(x, y, 0);
+        g.pose().scale(line.scale, line.scale, 1F);
+        g.drawString(font, line.text, 0, 0, INK, false);
+        g.pose().translate(boldOffset(line.scale), 0, 0);
+        g.drawString(font, line.text, 0, 0, INK, false);
+        g.pose().popPose();
+    }
+
+    /** half a glyph pixel, kept to whole screen pixels and at least one, in glyph pixels, for text drawn at {@code scale} */
+    private float boldOffset(float scale) {
+        // screen pixels per glyph pixel: a whole number, since the book's text scales are kept to whole screen pixels
+        int glyphPixel = Math.max(1, Math.round((float) minecraft.getWindow().getGuiScale() * scale));
+        return Math.max(1, glyphPixel / 2) / (float) glyphPixel;
+    }
+
+    /**
+     * A line of text with its bold runs thickened by {@link #boldOffset} rather than vanilla's whole glyph pixel, which
+     * fills in the gaps of letters such as m and w at most GUI scales. Each character still sits exactly where vanilla
+     * puts it, bold's wider spacing included, so wrapping and link positions are unchanged. A line with no bold is
+     * drawn in one go.
+     */
+    private void drawText(GuiGraphics g, FormattedCharSequence text, int x, int y, int color) {
+        boolean[] bold = {false};
+        text.accept((index, style, codepoint) -> {
+            bold[0] |= style.isBold();
+            return !bold[0];
+        });
+        if (!bold[0]) {
+            g.drawString(font, text, x, y, color, false);
+            return;
+        }
+        float offset = boldOffset(1F);
+        float[] at = {x};
+        text.accept((index, style, codepoint) -> {
+            FormattedCharSequence glyph = FormattedCharSequence.codepoint(codepoint, style.withBold(false));
+            g.pose().pushPose();
+            g.pose().translate(at[0], y, 0);
+            g.drawString(font, glyph, 0, 0, color, false);
+            if (style.isBold()) {
+                g.pose().translate(offset, 0, 0);
+                g.drawString(font, glyph, 0, 0, color, false);
+            }
+            g.pose().popPose();
+            at[0] += font.getSplitter().stringWidth(FormattedCharSequence.codepoint(codepoint, style));
+            return true;
+        });
     }
 
     private void drawTitle(GuiGraphics g, int x, int y) {
@@ -942,8 +1019,8 @@ public class BookScreen extends Screen {
         if (hover) {
             text = text.copy().withStyle(ChatFormatting.UNDERLINE);
         }
-        g.drawString(font, heading ? Component.empty().withStyle(ChatFormatting.BOLD).append(shown) : text, textX,
-                y + (ROW_H - 8) / 2 + 1, hover ? LINK : INK, false);
+        drawText(g, (heading ? Component.empty().withStyle(ChatFormatting.BOLD).append(shown) : text).getVisualOrderText(),
+                textX, y + (ROW_H - 8) / 2 + 1, hover ? LINK : INK);
     }
 
     private void drawIllustration(GuiGraphics g, Line line, int x, int y) {
