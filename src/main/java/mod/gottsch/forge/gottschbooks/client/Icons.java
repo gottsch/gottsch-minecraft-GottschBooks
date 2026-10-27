@@ -26,6 +26,7 @@ import net.minecraft.commands.arguments.item.ItemParser;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.item.ItemStack;
 
+import javax.annotation.Nullable;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -48,28 +49,50 @@ public final class Icons {
     }
 
     public static Optional<ItemStack> stack(ItemReference ref) {
+        Resolved resolved = resolve(ref);
+        if (resolved.why() != null) {
+            warn(ref, resolved.why());
+        }
+        return resolved.stack();
+    }
+
+    /** what is wrong with {@code reference} as written, for {@code /gottschbooks check}; empty when nothing is */
+    public static Optional<String> problem(String reference) {
+        Optional<ItemReference> ref = ItemReference.parse(reference);
+        if (ref.isEmpty()) {
+            return Optional.of("'" + reference + "' isn't an item or a picture (ns:id or scheme:ns:id)");
+        }
+        Resolved resolved = resolve(ref.get());
+        if (resolved.why() != null) {
+            return Optional.of("item '" + ref.get().text() + "': " + resolved.why());
+        }
+        return resolved.stack().isPresent() ? Optional.empty()
+                : Optional.of("no item or picture '" + ref.get().text() + "'");
+    }
+
+    /** the stack, if any, and why it isn't drawn as written; a missing item alone has no reason */
+    private record Resolved(Optional<ItemStack> stack, @Nullable String why) {}
+
+    private static Resolved resolve(ItemReference ref) {
         if (ref.nbt().isEmpty()) {
-            return Illustrations.get(ref.scheme(), ref.id());
+            return new Resolved(Illustrations.get(ref.scheme(), ref.id()), null);
         }
         if (!ref.scheme().equals(Illustrations.ITEM)) {
-            warn(ref, "NBT only works on item references; drawing it without");
-            return Illustrations.get(ref.scheme(), ref.id());
+            return new Resolved(Illustrations.get(ref.scheme(), ref.id()), "NBT only works on item references; drawing it without");
         }
         StringReader reader = new StringReader(ref.id() + ref.nbt());
         try {
             ItemParser.ItemResult result = ItemParser.parseForItem(BuiltInRegistries.ITEM.asLookup(), reader);
             if (reader.canRead()) {
-                warn(ref, "unexpected text after the NBT: '" + reader.getRemaining() + "'");
-                return Optional.empty();
+                return new Resolved(Optional.empty(), "unexpected text after the NBT: '" + reader.getRemaining() + "'");
             }
             ItemStack stack = new ItemStack(result.item().value());
             if (result.nbt() != null) {
                 stack.setTag(result.nbt());
             }
-            return Optional.of(stack).filter(s -> !s.isEmpty());
+            return new Resolved(Optional.of(stack).filter(s -> !s.isEmpty()), null);
         } catch (CommandSyntaxException e) {
-            warn(ref, e.getMessage());
-            return Optional.empty();
+            return new Resolved(Optional.empty(), e.getMessage());
         }
     }
 

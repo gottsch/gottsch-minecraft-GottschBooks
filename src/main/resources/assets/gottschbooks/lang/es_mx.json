@@ -4,5 +4,10 @@
   "gottschbooks.book.back": "< Atrás",
   "gottschbooks.book.contents": "Índice",
   "gottschbooks.command.open": "Abierto %s para %s jugador(es)",
+  "gottschbooks.command.check.clean": "%s libro(s) revisado(s): ningún problema",
+  "gottschbooks.command.check.problems": "%s libro(s) revisado(s): %s problema(s)",
+  "gottschbooks.command.check.more": "...y %s más, todos en el registro",
+  "gottschbooks.command.check.missing": "No existe el libro %s",
+  "gottschbooks.recipe.time": "%s s",
   "item.gottschbooks.book": "Libro"
 }

@@ -18,6 +18,7 @@ commands and loot tables, and the build setup), both forms are shown.
 - [Opening a book](#opening-a-book)
 - [Depending on Gottsch Books](#depending-on-gottsch-books)
 - [Tips and gotchas](#tips-and-gotchas)
+- [Checking a book](#checking-a-book)
 
 ## Two kinds of book
 
@@ -294,12 +295,26 @@ The most common gem.
 | Block | Argument | Shows |
 |---|---|---|
 | `spotlight` | an item (components allowed), or `scheme:ns:id` | the item at 2x in a frame, with a tooltip |
-| `recipe` | a recipe id | a 3x3 crafting grid and the result. Ingredients that accept several items cycle through them |
+| `recipe` | a recipe id | the recipe laid out for its block (below), and the result. Ingredients that accept several items cycle through them |
 | `image` | `ns:textures/....png`, then optionally `width height` | the image, scaled to fit the page (256x256 assumed without a size) |
 | `entity` | an entity id | the mob, slowly turning |
 
 Put a `## Heading` right before a block to give it a title: the heading and the block are kept on the same page. If
 the item, recipe, image or mob doesn't exist, the page shows `[recipe ns:id?]` in its place and the log says why.
+`/gottschbooks check` finds all of them at once (see [Checking a book](#checking-a-book)).
+
+A `recipe` block draws each kind of recipe the way its block does:
+
+| Recipe | Shows |
+|---|---|
+| crafting (shaped or shapeless) | a 3x3 grid |
+| smelting, blasting, smoking, campfire | the input with the furnace, blast furnace, smoker or campfire under it, and the cooking time under the arrow |
+| stonecutting | the input with the stonecutter under it |
+| smithing | template, base and addition, with the smithing table under them |
+| anything else, a mod's machine included | its ingredients, three to a row, with the block the mod names as its station under them |
+
+A recipe that works out its ingredients in code, such as dyeing armour or cloning a book, has nothing to draw and
+shows as missing.
 
 ## Links
 
@@ -417,4 +432,26 @@ An empty result leaves the picture out; an exception is logged and never breaks 
   in front.
 - **Lists carry on:** a plain line straight after a list item joins that item. Leave a blank line to start a new
   paragraph.
-- **Reloading:** books load with the other assets, so F3+T reloads them in game while you write.
+- **Reloading:** books load with the other assets, so F3+T reloads them in game while you write. Then run
+  [`/gottschbooks check`](#checking-a-book).
+
+## Checking a book
+
+`/gottschbooks check` reads every book the game has loaded, your resource packs' included, and lists what is wrong
+in chat, file by file. `/gottschbooks check mymod:guide` checks one book. Anyone can run it: books are client
+assets, so it checks what your game has loaded, and changes nothing. Press F3+T after fixing a file, then check
+again.
+
+It finds:
+
+- items, pictures, recipes, images and mobs that don't exist, and components that don't parse
+- recipes with nothing to draw (their ingredients are worked out in code)
+- `entry:` links to entries that aren't there, or to a `{#anchor}` the entry doesn't have, and entry links in a lore
+  book
+- fonts that aren't there
+- entries whose `category` has no `categories/<id>.md`
+- fenced blocks the reader doesn't know (` ```table `), which show as plain lines
+- a manual with no `_index.md`, a lore book with no `text.md`, and a `skin` missing any of its three textures
+
+It checks every language a book has. The first 30 problems are shown in chat; click a file to copy its path. Every
+problem goes to the log.

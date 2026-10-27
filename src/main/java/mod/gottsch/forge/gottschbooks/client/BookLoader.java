@@ -58,6 +58,11 @@ public class BookLoader extends SimplePreparableReloadListener<Map<ResourceLocat
         return Optional.ofNullable(books.get(id));
     }
 
+    /** every loaded book, by id */
+    public static Map<ResourceLocation, LoadedBook> all() {
+        return books;
+    }
+
     @Override
     protected Map<ResourceLocation, LoadedBook> prepare(ResourceManager manager, ProfilerFiller profiler) {
         Map<ResourceLocation, BookText> metas = new HashMap<>();
