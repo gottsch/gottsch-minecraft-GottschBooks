@@ -32,9 +32,10 @@ import java.util.regex.Pattern;
 /**
  * The block pass over a book file (the Markdown subset in the plan's section 2): front matter, paragraphs (a blank
  * line ends one; a line ending in two spaces or {@code \} breaks the line), {@code #} headings, {@code ---} ornaments,
- * {@code >} notes, {@code ![caption](scheme:ns:id{nbt})} illustrations on a line of their own, {@code <!-- page -->},
- * one-level {@code -} / {@code 1.} lists, {@code {#anchor}} after a heading, and {@code ```kind argument} fenced
- * blocks (whose lines are book text too). Anything else is paragraph text, so no file can fail to load.
+ * {@code >} notes, {@code ![caption](scheme:ns:id{nbt})} illustrations on a line of their own, {@code {page}},
+ * one-level {@code -} / {@code 1.} lists, {@code {#anchor}} after a heading, {@code ```kind argument} fenced
+ * blocks (whose lines are book text too) and {@code | pipe | tables |}, whose cells may start with item icons.
+ * Anything else is paragraph text, so no file can fail to load.
  *
  * @author Mark Gottschling on 10/17/2026
  */
@@ -49,10 +50,21 @@ public final class BookParser {
     /** the NBT, if any, runs to the last {@code }} before the closing {@code )}, so it may hold both */
     private static final Pattern ILLUSTRATION =
             Pattern.compile("!\\[(.*?)]\\(([a-z0-9_]+):([a-z0-9_.-]+:[a-z0-9_./-]+)(\\{.*})?\\)");
+    /** the 1.0 page break, still read */
     private static final Pattern PAGE_BREAK = Pattern.compile("<!--\\s*page\\s*-->", Pattern.CASE_INSENSITIVE);
+    /** {@code {page}}, or {@code {page:single}} / {@code {page:spread}} to switch the page style too */
+    private static final Pattern PAGE = Pattern.compile("\\{page(?::\\s*([A-Za-z]+))?\\s*}");
     private static final Pattern BULLET = Pattern.compile("[-*+]\\s+(.*)");
     private static final Pattern NUMBERED = Pattern.compile("(\\d{1,3})[.)]\\s+(.*)");
     private static final Pattern FENCE = Pattern.compile("```\\s*([a-z0-9_]*)\\s*(.*)");
+    /** a table's alignment row: cells of dashes, each with an optional {@code :} at either end */
+    private static final Pattern TABLE_SEPARATOR = Pattern.compile("\\|?\\s*:?-+:?\\s*(\\|\\s*:?-+:?\\s*)*\\|?");
+    /**
+     * an icon at the start of a table cell; unlike an illustration it needn't end the line, so its NBT stops at the
+     * first {@code })}, and the caption is ignored
+     */
+    private static final Pattern TABLE_ICON =
+            Pattern.compile("!\\[.*?]\\(([a-z0-9_]+):([a-z0-9_.-]+:[a-z0-9_./-]+)(\\{.*?})?\\)\\s*");
 
     private BookParser() {}
 
@@ -85,9 +97,20 @@ public final class BookParser {
                 para.end();
                 continue;
             }
-            if (PAGE_BREAK.matcher(line).matches()) {
+            if (isTableStart(lines, n)) {
                 para.end();
-                blocks.add(new Block.PageBreak());
+                int end = n + 2;
+                while (end < lines.size() && !lines.get(end).isBlank() && hasPipe(lines.get(end))) {
+                    end++;
+                }
+                blocks.add(table(lines.subList(n, end)));
+                n = end - 1;
+                continue;
+            }
+            Matcher page = PAGE.matcher(line);
+            if (page.matches() || PAGE_BREAK.matcher(line).matches()) {
+                para.end();
+                blocks.add(new Block.PageBreak(page.matches() && page.group(1) != null ? page.group(1).toLowerCase(Locale.ROOT) : ""));
                 continue;
             }
             if (ORNAMENT.matcher(line).matches()) {
@@ -142,6 +165,105 @@ public final class BookParser {
         }
         para.end();
         return List.copyOf(blocks);
+    }
+
+    /** a line with a {@code |} that isn't escaped */
+    private static boolean hasPipe(String line) {
+        for (int i = 0; i < line.length(); i++) {
+            if (line.charAt(i) == '\\') {
+                i++;
+            } else if (line.charAt(i) == '|') {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** a line with a pipe, then a separator row with as many cells: {@code |---|:---:|} */
+    private static boolean isTableStart(List<String> lines, int n) {
+        if (n + 1 >= lines.size() || !hasPipe(lines.get(n))) {
+            return false;
+        }
+        String separator = lines.get(n + 1).strip();
+        return separator.indexOf('|') >= 0 && TABLE_SEPARATOR.matcher(separator).matches()
+                && cells(separator).size() == cells(lines.get(n)).size();
+    }
+
+    /** a table's lines: the header, the separator, then the rows */
+    private static Block.Table table(List<String> lines) {
+        List<Block.Table.Align> align = cells(lines.get(1)).stream().map(BookParser::align).toList();
+        List<String> problems = new ArrayList<>();
+        List<Block.Table.Cell> header = row(lines.get(0), align.size());
+        if (header.stream().allMatch(Block.Table.Cell::isEmpty)) {
+            header = List.of();
+        }
+        List<List<Block.Table.Cell>> rows = new ArrayList<>();
+        for (int i = 2; i < lines.size(); i++) {
+            int count = cells(lines.get(i)).size();
+            if (count != align.size()) {
+                problems.add("row " + (i - 1) + " has " + count + " cells but the table has " + align.size()
+                        + (count < align.size() ? "; the missing ones are left empty" : "; the extra ones are left out"));
+            }
+            rows.add(row(lines.get(i), align.size()));
+        }
+        return new Block.Table(align, header, List.copyOf(rows), List.copyOf(problems));
+    }
+
+    private static Block.Table.Align align(String separator) {
+        boolean left = separator.startsWith(":"), right = separator.endsWith(":");
+        return right && left ? Block.Table.Align.CENTER : right ? Block.Table.Align.RIGHT : Block.Table.Align.LEFT;
+    }
+
+    /** a row's cells, padded or cut to {@code count} */
+    private static List<Block.Table.Cell> row(String line, int count) {
+        List<String> texts = cells(line);
+        List<Block.Table.Cell> row = new ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            row.add(cell(i < texts.size() ? texts.get(i) : ""));
+        }
+        return List.copyOf(row);
+    }
+
+    /** a cell's leading icons, then the rest as book text */
+    private static Block.Table.Cell cell(String text) {
+        List<ItemReference> icons = new ArrayList<>();
+        Matcher icon = TABLE_ICON.matcher(text);
+        int at = 0;
+        while (icon.region(at, text.length()).lookingAt()) {
+            icons.add(new ItemReference(icon.group(1), new ResourceLocation(icon.group(2)),
+                    icon.group(3) == null ? "" : icon.group(3)));
+            at = icon.end();
+        }
+        return new Block.Table.Cell(List.copyOf(icons), Inline.parse(text.substring(at).strip()));
+    }
+
+    /**
+     * a row's cells: split on {@code |}s that aren't escaped, without the optional outer ones; {@code \|} is left for
+     * the inline pass to unescape
+     */
+    static List<String> cells(String line) {
+        String row = line.strip();
+        if (row.startsWith("|")) {
+            row = row.substring(1);
+        }
+        if (row.endsWith("|") && !row.endsWith("\\|")) {
+            row = row.substring(0, row.length() - 1);
+        }
+        List<String> cells = new ArrayList<>();
+        StringBuilder cell = new StringBuilder();
+        for (int i = 0; i < row.length(); i++) {
+            char c = row.charAt(i);
+            if (c == '\\' && i + 1 < row.length()) {
+                cell.append(c).append(row.charAt(++i));
+            } else if (c == '|') {
+                cells.add(cell.toString().strip());
+                cell.setLength(0);
+            } else {
+                cell.append(c);
+            }
+        }
+        cells.add(cell.toString().strip());
+        return cells;
     }
 
     /** reads the front matter into {@code front}; returns the first line after it (0 when there is none) */

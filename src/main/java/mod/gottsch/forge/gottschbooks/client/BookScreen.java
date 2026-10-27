@@ -84,6 +84,8 @@ public class BookScreen extends Screen {
     private static final int ORNAMENT_SLOT = 16;
     private static final int MARGIN = 12;
     private static final int MAX_BOOK_W = 520, MAX_BOOK_H = 340;
+    /** the front matter key for a book's or entry's page style, and the styles: one wide page, or two side by side */
+    static final String PAGES = "pages", ONE_PAGE = "single", TWO_PAGES = "spread";
     /** below this width a spread's pages get too narrow to read, so the book shows one page */
     private static final int MIN_SPREAD_W = 320;
     private static final int PAGE_PAD = 12;
@@ -101,6 +103,8 @@ public class BookScreen extends Screen {
     private final ResourceLocation bookId;
     private final ItemStack icon;
     private final ResourceLocation cover, page, ornament;
+    /** book.md's {@code pages:} */
+    private final Optional<String> bookPages;
     // lore book
     private final Optional<Component> author;
     private final List<Block> loreBlocks;
@@ -117,13 +121,18 @@ public class BookScreen extends Screen {
 
     // layout, recomputed in init() (it runs again when the window is resized)
     private int bookX, bookY, bookW, bookH;
+    /** the window is wide enough for two pages side by side */
     private boolean spread;
-    private int pageW, pageH, textW;
+    private int pageW, pageH;
+    /** the text width of a page in a spread, and of a single wide page; and of the page being laid out or drawn */
+    private int pageTextW, wideTextW, textW;
     private float illustrationScale;
     /** {@code #} and {@code ##} heading text scales, kept to whole screen pixels like the illustrations */
     private float headingScale1, headingScale2;
     private int illustrationSize;
-    private final List<List<Line>> pages = new ArrayList<>();
+    private final List<Page> pages = new ArrayList<>();
+    /** what each turn of the page shows: a spread's one or two pages, or one wide page */
+    private final List<View> views = new ArrayList<>();
     private int view;
     private PageButton back, forward;
     /** where things were drawn this frame, for tooltips and clicks */
@@ -132,13 +141,21 @@ public class BookScreen extends Screen {
     private final List<TextHit> textHits = new ArrayList<>();
 
     private enum Kind { TEXT, BLANK, ORNAMENT, TITLE, ENTRY_TITLE, ILLUSTRATION, SPOTLIGHT, RECIPE, IMAGE, ENTITY,
-        CATEGORY, LINK_ROW, BREAK, HEADING }
+        CATEGORY, LINK_ROW, BREAK, HEADING, TABLE_HEADER, TABLE_ROW }
+
+    /** a page's lines, and whether it is a single wide page ({@code {page:single}}) */
+    private record Page(List<Line> lines, boolean wide) {}
+
+    /** one turn of the page: {@code count} pages from {@code first}, side by side, or one wide page */
+    private record View(int first, int count, boolean wide) {}
 
     /** one row of a page */
     private static final class Line {
         final Kind kind;
         final int height;
         int section;
+        /** laid out for a single wide page; a page break's is the style of the pages after it */
+        boolean wide;
         /** height that must follow this line on the same page (headings, ornaments, spotlights) */
         int keep;
         FormattedCharSequence text;
@@ -157,6 +174,9 @@ public class BookScreen extends Screen {
         RecipeView recipe;
         ImageView image;
         LivingEntity entity;
+        /** a table header or row: its table, and which row (-1 for the header) */
+        TableView table;
+        int row;
 
         Line(Kind kind, int height, int section) {
             this.kind = kind;
@@ -197,6 +217,7 @@ public class BookScreen extends Screen {
         this.cover = art(skin, "cover");
         this.page = art(skin, "page");
         this.ornament = art(skin, "ornament");
+        this.bookPages = book.meta().get(PAGES);
     }
 
     /** a manual, opened at {@code target} ({@code entry} or {@code entry#anchor}), else where it was left */
@@ -211,6 +232,7 @@ public class BookScreen extends Screen {
         this.cover = art(skin, "cover");
         this.page = art(skin, "page");
         this.ornament = art(skin, "ornament");
+        this.bookPages = book.meta().get(PAGES);
         if (target.isPresent()) {
             String[] parts = target.get().split("#", 2);
             if (manual.entry(parts[0]).isPresent()) {
@@ -242,6 +264,16 @@ public class BookScreen extends Screen {
         return manual != null;
     }
 
+    /**
+     * the style the text starts in: {@code pages: single} (one wide page, for tables) or {@code pages: spread} (two
+     * pages, the default), from the open entry's front matter, else book.md's; {@code {page:...}} breaks switch it
+     */
+    private boolean wantsOnePage() {
+        Optional<String> pages = manual == null || entry == null ? Optional.empty()
+                : manual.entry(entry).flatMap(e -> e.text().get(PAGES));
+        return pages.or(() -> bookPages).map(style -> style.strip().equalsIgnoreCase(ONE_PAGE)).orElse(false);
+    }
+
     @Override
     protected void init() {
         // where the reader was: the old layout's section, else the remembered one
@@ -249,6 +281,7 @@ public class BookScreen extends Screen {
 
         bookW = Math.min(width - 2 * MARGIN, MAX_BOOK_W);
         bookH = Math.min(height - 2 * MARGIN, MAX_BOOK_H);
+        // a window too narrow for two pages shows one narrow page at a time, whatever the style
         spread = bookW >= MIN_SPREAD_W;
         if (!spread) {
             bookW = Math.min(bookW, MIN_SPREAD_W / 2 + 40);
@@ -257,7 +290,9 @@ public class BookScreen extends Screen {
         bookY = (height - bookH) / 2;
         pageW = spread ? (bookW - 2 * COVER_BORDER - 4) / 2 : bookW - 2 * COVER_BORDER;
         pageH = bookH - 2 * COVER_BORDER;
-        textW = pageW - 2 * PAGE_PAD;
+        pageTextW = pageW - 2 * PAGE_PAD;
+        wideTextW = spread ? bookW - 2 * COVER_BORDER - 2 * PAGE_PAD : pageTextW;
+        textW = pageTextW;
 
         // 1.5x of a GUI pixel is 4.5 screen pixels at GUI scale 3, which draws item pixels unevenly; round to whole
         // screen pixels instead (exactly 1.5x at scales 2 and 4, 1.67x at 3)
@@ -294,18 +329,29 @@ public class BookScreen extends Screen {
     /** builds a column of lines from blocks; sections are counted by ornaments */
     private final class Flow {
         final List<Line> lines = new ArrayList<>();
+        /** the style being laid out; {@code textW} follows it */
+        boolean wide = wantsOnePage();
         int section;
         boolean textBefore;
         boolean listBefore;
 
         Line add(Kind kind, int height) {
             Line line = new Line(kind, height, section);
+            line.wide = wide;
             lines.add(line);
             return line;
         }
 
         void blank() {
             add(Kind.BLANK, LINE_H);
+        }
+
+        /** {@code single} or {@code spread} switches the style (and the width text is laid out in); anything else keeps it */
+        void style(String style) {
+            if (style.equals(ONE_PAGE) || style.equals(TWO_PAGES)) {
+                wide = style.equals(ONE_PAGE);
+                textW = wide ? wideTextW : pageTextW;
+            }
         }
 
         void blocks(List<Block> blocks) {
@@ -363,13 +409,37 @@ public class BookScreen extends Screen {
                     line.label = caption;
                     line.color = NOTE;
                 }, () -> missing("item", i.item().text()));
-            } else if (block instanceof Block.PageBreak) {
+            } else if (block instanceof Block.PageBreak b) {
+                style(b.style());
                 add(Kind.BREAK, 0);
                 textBefore = false;
                 listBefore = false;
             } else if (block instanceof Block.Fence f) {
                 fence(f);
+            } else if (block instanceof Block.Table t) {
+                table(t);
             }
+        }
+
+        private void table(Block.Table t) {
+            if (textBefore || listBefore) {
+                blank();
+            }
+            TableView view = TableView.of(t, font, textW, LINE_H, NOTE, BookScreen.this::overhang);
+            if (view.header() != null) {
+                Line header = add(Kind.TABLE_HEADER, view.header().height());
+                header.table = view;
+                header.row = -1;
+                // never the last thing on a page
+                header.keep = view.rows().isEmpty() ? 0 : view.rows().get(0).height();
+            }
+            for (int r = 0; r < view.rows().size(); r++) {
+                Line row = add(Kind.TABLE_ROW, view.rows().get(r).height());
+                row.table = view;
+                row.row = r;
+            }
+            textBefore = true;
+            listBefore = false;
         }
 
         private void fence(Block.Fence fence) {
@@ -487,6 +557,7 @@ public class BookScreen extends Screen {
     }
 
     private List<Line> flow() {
+        textW = wantsOnePage() ? wideTextW : pageTextW;
         Flow flow = new Flow();
         if (!isManual()) {
             flow.add(Kind.TITLE, titleHeight(title, author.isPresent()));
@@ -581,19 +652,22 @@ public class BookScreen extends Screen {
 
     private void paginate() {
         pages.clear();
+        views.clear();
         int capacity = pageH - PAGE_PAD - FOOTER;
         List<Line> flow = flow();
 
         List<Line> page = new ArrayList<>();
         int used = 0;
+        boolean wide = wantsOnePage();
         for (int i = 0; i < flow.size(); i++) {
             Line line = flow.get(i);
             if (line.kind == Kind.BREAK) {
                 if (!page.isEmpty()) {
-                    pages.add(page);
+                    pages.add(new Page(page, wide));
                     page = new ArrayList<>();
                     used = 0;
                 }
+                wide = line.wide;
                 continue;
             }
             // a page never starts with a gap
@@ -608,23 +682,41 @@ public class BookScreen extends Screen {
                 needed = line.height + next.height + next.keep;
             }
             if (!page.isEmpty() && used + needed > capacity) {
-                pages.add(page);
+                pages.add(new Page(page, wide));
                 page = new ArrayList<>();
                 used = 0;
                 if (line.kind == Kind.BLANK || line.kind == Kind.ORNAMENT) {
                     continue;
                 }
             }
+            // a table that carries on from the page before repeats its header
+            if (page.isEmpty() && line.kind == Kind.TABLE_ROW && line.row > 0 && line.table.header() != null) {
+                Line header = new Line(Kind.TABLE_HEADER, line.table.header().height(), line.section);
+                header.table = line.table;
+                header.row = -1;
+                page.add(header);
+                used += header.height;
+            }
             page.add(line);
             used += line.height;
         }
         if (!page.isEmpty()) {
-            pages.add(page);
+            pages.add(new Page(page, wide));
+        }
+        // a wide page has a view to itself; spread pages pair up, starting afresh after each wide one
+        for (int p = 0; p < pages.size(); ) {
+            boolean alone = !spread || pages.get(p).wide() || p + 1 >= pages.size() || pages.get(p + 1).wide();
+            views.add(new View(p, alone ? 1 : 2, spread && pages.get(p).wide()));
+            p += alone ? 1 : 2;
+        }
+        if (views.isEmpty()) {
+            views.add(new View(0, 0, false));
         }
     }
 
     private static boolean isPicture(Line line) {
-        return line.kind == Kind.SPOTLIGHT || line.kind == Kind.RECIPE || line.kind == Kind.IMAGE || line.kind == Kind.ENTITY;
+        return line.kind == Kind.SPOTLIGHT || line.kind == Kind.RECIPE || line.kind == Kind.IMAGE || line.kind == Kind.ENTITY
+                || line.kind == Kind.TABLE_HEADER || line.kind == Kind.TABLE_ROW;
     }
 
     private int titleHeight(Component text, boolean withAuthor) {
@@ -638,21 +730,22 @@ public class BookScreen extends Screen {
         return Math.max(ROW_H, Math.round(titleLines * LINE_H * TITLE_SCALE)) + 8;
     }
 
-    private int perView() {
-        return spread ? 2 : 1;
-    }
-
     private int viewOf(int page) {
-        return page / perView();
+        for (int v = 0; v < views.size(); v++) {
+            if (page < views.get(v).first() + Math.max(1, views.get(v).count())) {
+                return v;
+            }
+        }
+        return lastView();
     }
 
     private int lastView() {
-        return Math.max(0, (pages.size() - 1) / perView());
+        return Math.max(0, views.size() - 1);
     }
 
     private int pageOfSection(int section) {
         for (int p = 0; p < pages.size(); p++) {
-            for (Line line : pages.get(p)) {
+            for (Line line : pages.get(p).lines()) {
                 if (line.kind == Kind.TEXT && line.section >= section) {
                     return p;
                 }
@@ -663,7 +756,7 @@ public class BookScreen extends Screen {
 
     private int pageOfAnchor(String anchor) {
         for (int p = 0; p < pages.size(); p++) {
-            for (Line line : pages.get(p)) {
+            for (Line line : pages.get(p).lines()) {
                 if (anchor.equals(line.anchor)) {
                     return p;
                 }
@@ -673,11 +766,11 @@ public class BookScreen extends Screen {
     }
 
     private int currentSection() {
-        int first = view * perView();
+        int first = view < views.size() ? views.get(view).first() : 0;
         if (first >= pages.size()) {
             return 0;
         }
-        for (Line line : pages.get(first)) {
+        for (Line line : pages.get(first).lines()) {
             if (line.kind == Kind.TEXT) {
                 return line.section;
             }
@@ -824,18 +917,23 @@ public class BookScreen extends Screen {
         linkHits.clear();
         textHits.clear();
         nineSlice(g, cover, bookX, bookY, bookW, bookH, COVER_BORDER);
-        int first = view * perView();
-        for (int i = 0; i < perView(); i++) {
+        View shown = views.get(Math.min(view, views.size() - 1));
+        // one wide page across the book, or a spread's two (the second blank when the spread has one page)
+        int slots = shown.wide() || !spread ? 1 : 2;
+        int w = shown.wide() ? bookW - 2 * COVER_BORDER : pageW;
+        textW = shown.wide() ? wideTextW : pageTextW;
+        for (int i = 0; i < slots; i++) {
             int x = bookX + COVER_BORDER + i * (pageW + 4);
             int y = bookY + COVER_BORDER;
-            nineSlice(g, page, x, y, pageW, pageH, PAGE_BORDER);
-            if (spread) {
+            nineSlice(g, page, x, y, w, pageH, PAGE_BORDER);
+            if (slots == 2) {
                 gutterShadow(g, x, y, i == 0);
             }
-            if (first + i < pages.size()) {
-                drawPage(g, pages.get(first + i), x + PAGE_PAD, y + PAGE_PAD, mouseX, mouseY);
-                String number = String.valueOf(first + i + 1);
-                g.drawString(font, number, x + (pageW - font.width(number)) / 2, y + pageH - 12, NOTE, false);
+            if (i < shown.count()) {
+                int p = shown.first() + i;
+                drawPage(g, pages.get(p).lines(), x + PAGE_PAD, y + PAGE_PAD, mouseX, mouseY);
+                String number = String.valueOf(p + 1);
+                g.drawString(font, number, x + (w - font.width(number)) / 2, y + pageH - 12, NOTE, false);
             }
         }
         if (isManual()) {
@@ -888,6 +986,7 @@ public class BookScreen extends Screen {
                 case RECIPE -> drawRecipe(g, line.recipe, x, y);
                 case IMAGE -> drawImage(g, line.image, x, y);
                 case ENTITY -> drawEntity(g, line.entity, x, y, line.height);
+                case TABLE_HEADER, TABLE_ROW -> drawTableRow(g, line, x, y);
                 case CATEGORY -> drawRow(g, line, x, y, true, mouseX, mouseY);
                 case LINK_ROW -> drawRow(g, line, x, y, false, mouseX, mouseY);
                 case BLANK, BREAK -> { }
@@ -1089,6 +1188,43 @@ public class BookScreen extends Screen {
         g.renderItem(recipe.result(), rx + 1, ry + 1);
         g.renderItemDecorations(font, recipe.result(), rx + 1, ry + 1);
         itemHits.add(new ItemHit(rx + 1, ry + 1, 16, recipe.result()));
+    }
+
+    /**
+     * a table's header (bold, with a faint rule under it) or one of its rows (every other one faintly shaded); each cell
+     * aligned in its column, its icons with their tooltips, its text with its links
+     */
+    private void drawTableRow(GuiGraphics g, Line line, int x, int y) {
+        TableView table = line.table;
+        boolean header = line.row < 0;
+        TableView.Row row = header ? table.header() : table.rows().get(line.row);
+        if (header) {
+            g.fill(x, y + row.height() - 1, x + table.width(), y + row.height(), NOTE & 0x60FFFFFF);
+        } else if (line.row % 2 == 1) {
+            g.fill(x, y, x + table.width(), y + row.height(), 0x0C000000);
+        }
+        for (int c = 0; c < row.cells().size(); c++) {
+            TableView.Cell cell = row.cells().get(c);
+            Block.Table.Align align = table.align().get(c);
+            int blockX = x + table.xs()[c] + TableView.offset(align, table.widths()[c] - cell.blockW());
+            int top = y + TableView.ROW_PAD;
+            int iconX = cell.beside() ? blockX : blockX + TableView.offset(align, cell.blockW() - cell.iconsW());
+            for (ItemStack icon : cell.icons()) {
+                g.renderItem(icon, iconX, top);
+                g.renderItemDecorations(font, icon, iconX, top);
+                itemHits.add(new ItemHit(iconX, top, TableView.ICON, icon));
+                iconX += TableView.ICON_STEP;
+            }
+            int areaX = cell.beside() ? blockX + cell.iconsW() + TableView.ICON_GAP : blockX;
+            int areaW = cell.beside() ? cell.textW() : cell.blockW();
+            for (int i = 0; i < cell.lines().size(); i++) {
+                FormattedCharSequence text = cell.lines().get(i);
+                int lx = areaX + TableView.offset(align, areaW - font.width(text));
+                int ly = top + cell.lineY()[i];
+                drawText(g, text, lx, ly, INK);
+                textHits.add(new TextHit(lx, ly, text));
+            }
+        }
     }
 
     private void drawImage(GuiGraphics g, ImageView image, int x, int y) {

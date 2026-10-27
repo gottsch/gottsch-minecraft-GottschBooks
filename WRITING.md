@@ -173,6 +173,7 @@ ignored.
 | `mode` | book.md | `manual`; anything else (or no book.md) is a lore book |
 | `icon` | book.md | the manual's icon on its contents page, when it isn't opened from an item |
 | `skin` | book.md | a texture folder (`mymod:textures/gui/my_book`) holding `cover.png`, `page.png` and `ornament.png`; see [Tips](#tips-and-gotchas) |
+| `pages` | book.md, entries | the [page style](#page-styles) the text starts in: `single` for one wide page, `spread` (the default) for two side by side. An entry's setting wins over book.md's |
 | `title` | text.md, _index.md, categories, entries | the title. For a lore book, a leading `# Heading` works too |
 | `author` | text.md | shown under the title as "by ..." |
 | `icon` | categories, entries | the item shown next to it on the contents and on the entry's title |
@@ -198,15 +199,69 @@ in a `/give` command (see [Items with components](#items-with-components)).
 | `---` | an ornament between sections |
 | `> text` | an editor's note, in grey italics |
 | `- item` or `1. item` | a list (one level). Indented lines continue the item |
-| `<!-- page -->` | start a new page here |
-| `\*`, `\{`, `\[`, `\-` ... | the character itself, not formatting |
+| `{page}` | start a new page here (a line of its own). `{page:single}` and `{page:spread}` also switch the page style; see [Page styles](#page-styles) |
+| `\| a \| b \|` | a table (see [Tables](#tables)) |
+| `\*`, `\{`, `\[`, `\-`, `\|` ... | the character itself, not formatting |
 
 A colour stays on until `{}`. Colours don't nest: a second colour replaces the first. A marker that is never
 closed (a lone `*`, a `{gold}` with no `{}`) is shown as plain text, so a stray character never breaks a page.
-Anything not listed here (tables, HTML, nested lists) is shown as plain text too.
+Anything not listed here (HTML, nested lists) is shown as plain text too.
 
 Prefer the darker colours. Light ones (`yellow`, `white`, `aqua`) are hard to read on the page, and a hex colour
 under 3:1 contrast with the paper logs a warning when the book loads.
+
+### Tables
+
+Tables are written as on GitHub: a header row, a row of dashes, then the rows. Colons in the dash row align a
+column: `:---` (or `---`) left, `:---:` centred, `---:` right. The pipes at either end of a row are optional.
+
+```markdown
+| Ore | Found | Mine with |
+|---|:---:|---|
+| ![](item:minecraft:coal_ore) Coal | above y 0 | ![](item:minecraft:wooden_pickaxe) any pickaxe |
+| ![](item:minecraft:diamond_ore) **Diamond** | y -64 to 16 | ![](item:minecraft:iron_pickaxe) iron or better |
+```
+
+- **Cells** hold book text: bold, italics, colours, fonts and links all work. Write `\|` for a pipe inside a cell.
+- **Icons:** a cell may *start* with one or more items, written like illustrations (`![](item:ns:id)`, components
+  allowed). They are drawn at 16 px with their tooltips, beside the cell's text, or above it when the column is too
+  narrow. An icon after the cell's text isn't drawn; it shows as text.
+- **No header:** leave every header cell empty (`| | |`) and no header is drawn, which suits a grid of pictures.
+- **Fitting:** a table is only as wide as it needs to be. When it is too wide for the page, the columns with the most
+  text give way first and their cells wrap; a short column keeps its width. A row is never split across pages, and
+  a table that carries on to the next page repeats its header there.
+- **Width:** two pages side by side leave a table about 200 px. Keep tables there to two or three short columns, or
+  put the table on a single wide page with `{page:single}` (see [Page styles](#page-styles)).
+- A row with too few cells is padded with empty ones, and extra cells are left out. `/gottschbooks check` reports
+  both.
+- Not supported: cells spanning rows or columns, several paragraphs in a cell, and blocks (lists, spotlights) inside
+  a cell. Tables work in lore books and manuals, and inside fenced blocks.
+
+### Page styles
+
+A book shows two pages side by side (a *spread*), or one *single* page as wide as the book, which gives tables and
+long lines room. A page break can switch between them, and the style lasts until the next break that names one:
+
+```markdown
+Two pages of prose...
+
+{page:single}
+
+| a wide | table | with | room |
+|---|---|---|---|
+
+{page:spread}
+
+Back to two pages.
+```
+
+- `{page}` only starts a new page; `{page:single}` and `{page:spread}` start one and switch the style. Each goes on a
+  line of its own; anywhere else it is shown as text.
+- The text starts in the style from `pages:` in the entry's front matter, else book.md's, else `spread`.
+- After a switch, pages pair up afresh, so a spread page never faces a single one. A spread with one page left
+  shows a blank page beside it, as at the end of a book.
+- In a window too narrow for two pages, every page is shown one at a time, and a single page is no wider.
+- The 1.0 page break, `<!-- page -->`, still works the same as `{page}`.
 
 ### Fonts
 
@@ -451,7 +506,9 @@ It finds:
   book
 - fonts that aren't there
 - entries whose `category` has no `categories/<id>.md`
-- fenced blocks the reader doesn't know (` ```table `), which show as plain lines
+- fenced blocks the reader doesn't know (` ```chart `), which show as plain lines
+- table rows with too few or too many cells, icons after a cell's text, and empty tables
+- a `pages` value, or a `{page:...}` style, other than `single` or `spread`
 - a manual with no `_index.md`, a lore book with no `text.md`, and a `skin` missing any of its three textures
 
 It checks every language a book has. The first 30 problems are shown in chat; click a file to copy its path. Every

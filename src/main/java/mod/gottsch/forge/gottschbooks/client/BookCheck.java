@@ -36,6 +36,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -50,6 +51,8 @@ import java.util.stream.Collectors;
 public final class BookCheck {
     /** the fenced blocks the reader draws; any other kind shows its lines as plain text */
     private static final Set<String> FENCES = Set.of("spotlight", "recipe", "image", "entity");
+    /** an icon left in a table cell's text, after the text began */
+    private static final Pattern LATE_ICON = Pattern.compile("!\\[[^\\]]*]\\([a-z0-9_]+:[a-z0-9_.-]+:");
 
     /** one thing wrong, and the file it is in ({@code assets/<ns>/books/<book>/<locale>/<entry>.md}) */
     public record Problem(String file, String message) {}
@@ -87,6 +90,7 @@ public final class BookCheck {
                 }
             }
         });
+        pages(book.meta());
         if (book.isManual()) {
             if (!book.entries().containsKey(Manual.INDEX)) {
                 problem("manual has no " + Manual.INDEX + ".md, so its title is its id and it has no landing text");
@@ -105,6 +109,7 @@ public final class BookCheck {
 
     private void entry(String entry, String locale, BookText text, Set<String> categories) {
         text.get("icon").flatMap(Icons::problem).ifPresent(why -> problem("icon: " + why));
+        pages(text);
         if (book.isManual() && !entry.equals(Manual.INDEX) && !entry.startsWith(Manual.CATEGORIES)) {
             text.get("category").filter(category -> !categories.contains(category)).ifPresent(category ->
                     problem("category '" + category + "' has no categories/" + category + ".md, so the entry is listed after the categories"));
@@ -127,6 +132,38 @@ public final class BookCheck {
             } else if (block instanceof Block.Fence f) {
                 fence(f);
                 blocks(f.body(), locale);
+            } else if (block instanceof Block.Table t) {
+                table(t, locale);
+            } else if (block instanceof Block.PageBreak b) {
+                if (!b.style().isEmpty() && !b.style().equals(BookScreen.ONE_PAGE) && !b.style().equals(BookScreen.TWO_PAGES)) {
+                    problem("{page:" + b.style() + "} isn't single or spread, so it only breaks the page");
+                }
+            }
+        }
+    }
+
+    /** {@code pages:} is {@code single} or {@code spread} */
+    private void pages(BookText text) {
+        text.get(BookScreen.PAGES).filter(style -> !style.strip().equalsIgnoreCase(BookScreen.ONE_PAGE)
+                && !style.strip().equalsIgnoreCase(BookScreen.TWO_PAGES)).ifPresent(style ->
+                problem("pages '" + style + "' isn't single or spread, so the book shows two pages"));
+    }
+
+    /** a table's rows, cells, icons and text */
+    private void table(Block.Table table, String locale) {
+        table.problems().forEach(why -> problem("table: " + why));
+        List<List<Block.Table.Cell>> rows = new ArrayList<>(table.rows());
+        rows.add(table.header());
+        if (rows.stream().flatMap(List::stream).allMatch(Block.Table.Cell::isEmpty)) {
+            problem("table has nothing in it");
+        }
+        for (List<Block.Table.Cell> row : rows) {
+            for (Block.Table.Cell cell : row) {
+                cell.icons().forEach(icon -> Icons.problem(icon.text()).ifPresent(why -> problem("table icon: " + why)));
+                if (LATE_ICON.matcher(cell.text().getString()).find()) {
+                    problem("table cell '" + cell.text().getString() + "': only icons at the start of a cell are drawn; this one shows as text");
+                }
+                text(cell.text(), locale);
             }
         }
     }
