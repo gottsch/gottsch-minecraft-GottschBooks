@@ -31,6 +31,8 @@ public final class ClientConfig {
     public static final ModConfigSpec.BooleanValue LOOKUP_HINT;
     /** whether the item lookup line goes away for an item once its entry has been opened */
     public static final ModConfigSpec.BooleanValue LOOKUP_HINT_UNTIL_READ;
+    /** whether earning an advancement that unlocks manual entries shows a toast */
+    public static final ModConfigSpec.BooleanValue UNLOCK_TOASTS;
 
     static {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
@@ -42,6 +44,10 @@ public final class ClientConfig {
                 .comment("Stop showing the item lookup line for an item once you have opened the manual entry that explains it.",
                         "The lookup key still opens the entry.")
                 .define("lookupHintUntilRead", true);
+        UNLOCK_TOASTS = builder
+                .comment("Show a toast when an advancement you earn unlocks entries in a manual you carry.",
+                        "Pressing the lookup key while it shows opens the manual there.")
+                .define("unlockToasts", true);
         SPEC = builder.build();
     }
 

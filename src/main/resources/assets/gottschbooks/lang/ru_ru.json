@@ -33,6 +33,9 @@
   "gottschbooks.command.get.unavailable": "%s нельзя получить таким способом",
   "gottschbooks.recipe.time": "%s с",
   "gottschbooks.lookup.hint": "[%s] %s",
+  "gottschbooks.unlock.toast.title": "Новое: %s",
+  "gottschbooks.unlock.toast.entries": "Новых записей: %s",
+  "gottschbooks.unlock.toast.open": "Нажмите %s, чтобы прочитать",
   "key.gottschbooks.lookup": "Найти предмет в справочнике",
   "key.categories.gottschbooks": "Gottsch Books",
   "item.gottschbooks.book": "Книга"
