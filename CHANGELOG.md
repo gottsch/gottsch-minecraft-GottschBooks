@@ -35,6 +35,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a ribbon out of the book's edge, which a click opens and a right-click removes (up to 10 a book). A bookmark finds
   its page however the window lays the text out.
 - What a player has opened and bookmarked is kept on their computer, in `gottschbooks/reading.json`, for every world.
+- **Chapters:** a lore book can be written as a file per chapter, `<locale>/01-arrival.md`, `02-the-storm.md`, ...
+  (a number, a hyphen, a name), read in the order of their numbers after `text.md`, which is now optional. Each
+  chapter starts on a new page, its first heading is its title, and with two or more the title page lists them; a
+  click turns to one, **Contents** above the book returns to the list, and `[text](entry:02-the-storm#anchor)` links
+  jump between chapters, with Back. Each chapter file falls back to `en_us` on its own, so a translation missing a
+  chapter reads it in English, in its place. A book of `text.md` alone reads as before; bookmarks and the
+  exporter (one page, with a linked chapter list) work across chapters, and `/gottschbooks check` and `BookLint`
+  report chapter files with bad names or shared numbers, chapters with no heading, and translated chapters `en_us`
+  has no file for. `GottschBooksClient.open(book, entry)` opens a lore book at a chapter.
 
 #### Getting books to players
 - `"announce_on_first_join": true` in a book's server entry: instead of giving the book, each player is told about it
@@ -90,6 +99,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   carries over or becomes a placeholder.
 - The example journal has a sea-blue skin; the field guide is announced rather than given, and shows `lookup_from`
   and an item lookup for one kind of potion.
+- The example journal is written in three chapters, with a link between them, and has a Korean (`ko_kr`)
+  translation.
+- WRITING.md has a section on chapters (naming, order, links, translating), and its files, languages, links,
+  checking and exporting sections cover them; AI-INSTRUCTIONS.md says when and how to split a lore book into
+  chapters.
 
 ## [1.2.0] - Unreleased
 
