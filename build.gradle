@@ -72,6 +72,22 @@ dependencies {
 
 test {
     useJUnitPlatform()
+    // the example books the exporter's tests read
+    systemProperty 'gottschbooks.exampleBooks', file('src/example/resources/assets/example/books').absolutePath
+}
+
+// Exports a book as static web pages, for a wiki or a mod page (see WRITING.md, "Exporting a book"). With no -Pbook,
+// the example field guide:
+//   gradlew exportBook -Pbook=src/main/resources/assets/mymod/books/guide -Plocale=en_us -Pout=build/wiki -Pformat=markdown
+tasks.register('exportBook', JavaExec) {
+    group = 'documentation'
+    description = 'Exports a book folder as HTML pages or GitHub wiki Markdown: -Pbook=<folder> -Plocale -Pout -Pformat=html|markdown'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'mod.gottsch.forge.gottschbooks.export.BookExport'
+    args providers.gradleProperty('book').orElse('src/example/resources/assets/example/books/field_guide').get(),
+            providers.gradleProperty('locale').orElse('en_us').get(),
+            providers.gradleProperty('out').orElse('build/book-export').get(),
+            providers.gradleProperty('format').orElse('html').get()
 }
 
 tasks.named('processResources', ProcessResources).configure {
