@@ -33,6 +33,9 @@
   "gottschbooks.command.get.unavailable": "%s isn't a book you can get this way",
   "gottschbooks.recipe.time": "%ss",
   "gottschbooks.lookup.hint": "[%s] %s",
+  "gottschbooks.unlock.toast.title": "New in %s",
+  "gottschbooks.unlock.toast.entries": "%s new entries",
+  "gottschbooks.unlock.toast.open": "Press %s to read",
   "key.gottschbooks.lookup": "Look Up Item in a Manual",
   "key.categories.gottschbooks": "Gottsch Books",
   "item.gottschbooks.book": "Book"

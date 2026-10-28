@@ -187,7 +187,7 @@ ignored.
 | `icon` | categories, entries | the item shown next to it on the contents and on the entry's title |
 | `sort` | categories, entries | a number; lower comes first. Ties, and anything without one, sort by title |
 | `category` | entries | a category id (the file name under `categories/`). Entries without a known category are listed last |
-| `advancement` | entries | `ns:id`: the entry stays hidden until the player has this advancement |
+| `advancement` | entries | `ns:id`: the entry stays hidden until the player has this advancement; see [Locked entries](#locked-entries) |
 | `items` | entries | items the entry explains, for [item lookups](#item-lookup): item ids (with NBT to pick out one kind) and `#ns:tag` item tags, separated by commas |
 
 An `icon` (and a spotlight's item) is either an item id, `minecraft:diamond`, or a picture from an illustration
@@ -440,6 +440,22 @@ category; search results show it too. Under the manual's title, *New entries: 5*
 read** link for a player who already knows the mod. An entry added in a mod's update shows as new, so players find
 what changed. What a player has opened is kept on their computer, in `gottschbooks/reading.json` in the game
 folder, for every world alike; deleting the file makes every entry new again. There is nothing to write for it.
+
+## Locked entries
+
+`advancement: ns:id` in an entry's front matter hides the entry until the player has that advancement: it isn't on
+the contents, search never finds it, the item lookup never answers with it, and an `entry:` link to it does nothing
+yet. The advancement must be one the client is told about, which means one with a `display` (vanilla
+sends the client nothing about advancements without one, such as recipe unlocks).
+
+When the player earns the advancement, a toast says so, drawn like an advancement's: the book's icon, *New in A
+Field Guide to the Overworld*, and the entry's title (cut short to fit). When several entries of one book unlock at
+once, one toast counts them, *3 new entries*. While it shows, its second line takes turns with *Press B to read*, and
+pressing the item lookup key (**Look Up Item in a Manual**, B by default) with no screen open opens the manual at
+the entry, the first in contents order when there are several. Toasts only come for manuals the player can read: in
+their inventory, or `lookup: always` in book.md. Advancements the player already has when they join a world
+show no toasts. Players who don't want them set `unlockToasts = false` in `config/gottschbooks-client.toml`. There
+is nothing to write for them beyond `advancement:`.
 
 ## Bookmarks
 

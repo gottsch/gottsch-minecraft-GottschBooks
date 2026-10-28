@@ -35,6 +35,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a ribbon out of the book's edge, which a click opens and a right-click removes (up to 10 a book). A bookmark finds
   its page however the window lays the text out.
 - What a player has opened and bookmarked is kept on their computer, in `gottschbooks/reading.json`, for every world.
+- **Unlock toasts:** earning an advancement that unlocks manual entries shows a toast, *New in <manual>*, with the
+  book's icon and the entry's title (or how many entries, when several in one book unlock at once). Pressing the
+  item lookup key (B by default) while it shows, with no screen open, opens the manual there. Only for manuals the
+  player carries (or `lookup: always`), and never for advancements already earned when joining a world.
 
 #### Getting books to players
 - `"announce_on_first_join": true` in a book's server entry: instead of giving the book, each player is told about it
@@ -47,6 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A client config, `config/gottschbooks-client.toml`: `lookupHint = false` hides the item lookup line for players who
   know their mods (the key keeps working), and `/gottschbooks lookup hint on|off` sets it from chat;
   `lookupHintUntilRead` (above).
+- `unlockToasts = false` in `config/gottschbooks-client.toml` turns the unlock toasts off.
 - A server config, `serverconfig/gottschbooks-server.toml`, with `announceBooks` (above).
 
 #### Checking books

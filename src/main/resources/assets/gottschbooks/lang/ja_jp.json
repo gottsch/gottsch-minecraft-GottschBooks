@@ -33,6 +33,9 @@
   "gottschbooks.command.get.unavailable": "%sはこの方法では入手できない本です",
   "gottschbooks.recipe.time": "%s秒",
   "gottschbooks.lookup.hint": "[%s] %s",
+  "gottschbooks.unlock.toast.title": "%sに新しい項目",
+  "gottschbooks.unlock.toast.entries": "新しい項目 %s件",
+  "gottschbooks.unlock.toast.open": "%sキーで読む",
   "key.gottschbooks.lookup": "マニュアルでアイテムを調べる",
   "key.categories.gottschbooks": "Gottsch Books",
   "item.gottschbooks.book": "本"
