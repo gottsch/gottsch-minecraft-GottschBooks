@@ -404,6 +404,14 @@ Search reads titles, paragraphs, headings, list items, table cells, captions, an
 illustrated items, in the player's language. Locked entries are never found. There is nothing to write for it, but
 the words players will search for (an item's name, a mob's) are worth having in the text.
 
+## New entries
+
+An entry the player hasn't opened yet has a small red dot after its name on the contents, and so does its
+category; search results show it too. Under the manual's title, *New entries: 5* counts them, with a **Mark all
+read** link for a player who already knows the mod. An entry added in a mod's update shows as new, so players find
+what changed. What a player has opened is kept on their computer, in `gottschbooks/reading.json` in the game
+folder, for every world alike; deleting the file makes every entry new again. There is nothing to write for it.
+
 ## Item lookup
 
 While a player carries a manual, hovering over an item in any inventory adds a line to its tooltip naming the key
@@ -412,6 +420,8 @@ that shows the item. Closing the book goes back to the inventory. The key is **L
 Controls; the line shows whatever it is bound to, and unbinding it removes the line. The line is one line at most (a
 long title is cut short), and is left out while SHIFT is held, which many mods use for a long detail view; the key
 works either way.
+Once a player has opened the entry that explains an item, the line goes away for that item, since they know where
+to look; the key still works (`lookupHintUntilRead = false` in `config/gottschbooks-client.toml` keeps the line).
 Players who no longer need the line can hide it with `/gottschbooks lookup hint off` (or `lookupHint = false` in
 `config/gottschbooks-client.toml`) and still press the key; `/gottschbooks lookup hint on` brings it back.
 

@@ -3,6 +3,8 @@
   "gottschbooks.book.missing": "Текст этой книги не найден: %s",
   "gottschbooks.book.back": "< Назад",
   "gottschbooks.book.contents": "Содержание",
+  "gottschbooks.book.new": "Новых статей: %s",
+  "gottschbooks.book.mark_read": "Отметить все как прочитанные",
   "gottschbooks.book.search": "Поиск",
   "gottschbooks.search": "Поиск по справочнику",
   "gottschbooks.search.hint": "Поиск по справочнику",
