@@ -19,9 +19,9 @@ package mod.gottsch.forge.gottschbooks.export;
 
 import mod.gottsch.forge.gottschbooks.client.LoadedBook;
 import mod.gottsch.forge.gottschbooks.client.Manual;
-import mod.gottsch.forge.gottschbooks.core.text.BookText;
 import mod.gottsch.forge.gottschbooks.core.text.Inline;
 import mod.gottsch.forge.gottschbooks.core.text.ItemReference;
+import mod.gottsch.forge.gottschbooks.core.text.LoreText;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.Style;
@@ -36,7 +36,9 @@ import java.util.Optional;
 /**
  * What the HTML and Markdown pages share: which pages a book makes, what each is called, where an {@code entry:} link
  * leads, and a parsed text's styled runs. The manual is read with {@link Manual#of}, so its order, titles and
- * fallbacks match the game's; locked entries are exported too, marked as locked.
+ * fallbacks match the game's; locked entries are exported too, marked as locked. A lore book is read with
+ * {@link LoadedBook#lore}, so its chapters are one page, in the game's order, after a list of them (when there are
+ * two or more), and links to a chapter or its headings lead down the page.
  *
  * @author Mark Gottschling on 10/28/2026
  */
@@ -48,20 +50,25 @@ abstract class WebPages {
     protected final String locale;
     /** null for a lore book */
     protected final Manual manual;
+    /** null for a manual, or a lore book with no text */
+    protected final LoreText lore;
 
     WebPages(LoadedBook book, String locale) {
         this.book = book;
         this.locale = locale;
         this.manual = book.isManual() ? Manual.of(book, locale) : null;
+        this.lore = manual == null ? book.lore(locale).orElse(null) : null;
     }
 
     /** every page, file name to contents: the index (or the lore book's one page) first */
     Map<String, String> pages() {
         Map<String, String> pages = new LinkedHashMap<>();
         if (manual == null) {
-            BookText text = book.entry(LoadedBook.LORE_ENTRY, locale).orElseThrow(() ->
-                    new IllegalArgumentException("book " + book.id() + " is a lore book with no " + LoadedBook.LORE_ENTRY + ".md"));
-            pages.put(indexPage() + extension(), lore(text));
+            if (lore == null) {
+                throw new IllegalArgumentException("book " + book.id() + " is a lore book with no " + LoadedBook.LORE_ENTRY
+                        + ".md and no chapters");
+            }
+            pages.put(indexPage() + extension(), lore(lore));
         } else {
             pages.put(indexPage() + extension(), index());
             for (Manual.Entry entry : manual.allEntries()) {
@@ -81,7 +88,11 @@ abstract class WebPages {
 
     abstract String entry(Manual.Entry entry);
 
-    abstract String lore(BookText text);
+    /** a lore book's one page: its title, author, chapter list (with two or more), then the text */
+    abstract String lore(LoreText lore);
+
+    /** the entry name {@link #anchor} knows a lore book's one page by */
+    static final String LORE_PAGE = "";
 
     /** how a link to {@code entry}'s page reaches the heading with {@code {#anchor}} */
     abstract String anchor(String entry, String anchor);
@@ -111,23 +122,37 @@ abstract class WebPages {
 
     /**
      * Where a link leads on the web: a web link as written, an {@code entry:} link as a relative link to that entry's
-     * page; empty for an entry link that leads nowhere (a lore book's, or one to an entry that doesn't exist), which is
-     * then plain text.
+     * page, and in a lore book down its one page to the chapter or heading; empty for an entry link that leads
+     * nowhere (to an entry or chapter that doesn't exist), which is then plain text.
      */
     Optional<String> href(ClickEvent click) {
         if (click.getAction() == ClickEvent.Action.OPEN_URL) {
             return Optional.of(click.getValue());
         }
-        if (click.getAction() != ClickEvent.Action.CHANGE_PAGE || !click.getValue().startsWith(Inline.ENTRY_LINK)
-                || manual == null) {
+        if (click.getAction() != ClickEvent.Action.CHANGE_PAGE || !click.getValue().startsWith(Inline.ENTRY_LINK)) {
             return Optional.empty();
         }
         String[] target = click.getValue().substring(Inline.ENTRY_LINK.length()).split("#", 2);
+        if (manual == null) {
+            return loreAnchor(target).map(anchor -> "#" + anchor(LORE_PAGE, anchor));
+        }
         boolean exists = manual.allEntries().stream().anyMatch(e -> e.id().equals(target[0]));
         if (!exists) {
             return Optional.empty();
         }
         return Optional.of(link(page(target[0])) + (target.length > 1 ? "#" + anchor(target[0], target[1]) : ""));
+    }
+
+    /** where a lore book's link ({@code chapter}, {@code chapter#anchor}, {@code text#anchor}) leads: an anchor */
+    private Optional<String> loreAnchor(String[] target) {
+        if (lore == null) {
+            return Optional.empty();
+        }
+        Optional<LoreText.Chapter> chapter = lore.chapter(target[0]);
+        if (chapter.isPresent()) {
+            return Optional.of(target.length > 1 ? target[1] : chapter.get().anchor());
+        }
+        return target[0].equals(LoreText.TEXT) && target.length > 1 ? Optional.of(target[1]) : Optional.empty();
     }
 
     /** a placeholder's label for a fenced block's kind; empty for kinds the reader doesn't know */
@@ -154,7 +179,7 @@ abstract class WebPages {
         if (manual != null) {
             return manual.title().getString();
         }
-        return book.entry(LoadedBook.LORE_ENTRY, locale).flatMap(t -> t.get("title")).map(t -> Inline.parse(t).getString())
+        return Optional.ofNullable(lore).flatMap(t -> t.text().get("title")).map(t -> Inline.parse(t).getString())
                 .orElse(book.id().toString());
     }
 

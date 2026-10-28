@@ -23,6 +23,7 @@ import mod.gottsch.forge.gottschbooks.core.text.Block;
 import mod.gottsch.forge.gottschbooks.core.text.BookText;
 import mod.gottsch.forge.gottschbooks.core.text.Inline;
 import mod.gottsch.forge.gottschbooks.core.text.ItemReference;
+import mod.gottsch.forge.gottschbooks.core.text.LoreText;
 import net.minecraft.network.chat.Component;
 
 import java.util.HashMap;
@@ -33,7 +34,8 @@ import java.util.regex.Pattern;
 
 /**
  * A book as GitHub-wiki-flavoured Markdown: {@code Home.md} (a wiki's front page), then {@code <entry>.md} for a
- * manual, linked as wiki pages are, without the extension. GitHub gives each heading an id from its text, so a link
+ * manual, linked as wiki pages are, without the extension; a lore book is {@code Home.md} alone, its chapters listed
+ * at the top. GitHub gives each heading an id from its text, so a link
  * to {@code {#anchor}} is written with the id GitHub gives that heading. GitHub drops inline styles, so colours are
  * left out; bold and italic stay.
  *
@@ -41,6 +43,8 @@ import java.util.regex.Pattern;
  */
 final class MarkdownPages extends WebPages {
     static final String HOME = "Home";
+    /** the heading over a lore book's chapter list */
+    private static final String CONTENTS = "Contents";
     /** a paragraph's start that Markdown would read as a block of its own */
     private static final Pattern BLOCK_START = Pattern.compile("^(#|>|[-+=]|\\d+[.)])");
     private static final String ESCAPED = "\\`*_[]<|";
@@ -58,6 +62,16 @@ final class MarkdownPages extends WebPages {
                 headings(entry.text().blocks(), slugs, byAnchor);
                 anchors.put(entry.id(), byAnchor);
             }
+        } else if (lore != null) {
+            // in the order lore() writes them: the title, the chapter list's heading, then the text's
+            Slugs slugs = new Slugs();
+            slugs.slug(title());
+            if (lore.chapters().size() >= 2) {
+                slugs.slug(CONTENTS);
+            }
+            Map<String, String> byAnchor = new HashMap<>();
+            headings(lore.text().blocks(), slugs, byAnchor);
+            anchors.put(LORE_PAGE, byAnchor);
         }
     }
 
@@ -138,10 +152,20 @@ final class MarkdownPages extends WebPages {
     }
 
     @Override
-    String lore(BookText text) {
+    String lore(LoreText lore) {
+        BookText text = lore.text();
         StringBuilder out = new StringBuilder();
         out.append("# ").append(escape(title())).append("\n\n");
         text.get("author").ifPresent(author -> out.append("*by ").append(inline(Inline.parse(author))).append("*\n\n"));
+        if (lore.chapters().size() >= 2) {
+            out.append("## ").append(CONTENTS).append("\n\n");
+            int n = 1;
+            for (LoreText.Chapter chapter : lore.chapters()) {
+                out.append(n++).append(". [").append(escape(chapter.title().getString())).append("](#")
+                        .append(anchor(LORE_PAGE, chapter.anchor())).append(")\n");
+            }
+            out.append('\n');
+        }
         blocks(text.blocks(), out);
         return out.toString();
     }

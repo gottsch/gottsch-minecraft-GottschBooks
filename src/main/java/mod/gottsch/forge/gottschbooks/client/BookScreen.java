@@ -22,6 +22,7 @@ import mod.gottsch.forge.gottschbooks.core.ItemMatch;
 import mod.gottsch.forge.gottschbooks.core.text.Block;
 import mod.gottsch.forge.gottschbooks.core.text.BookText;
 import mod.gottsch.forge.gottschbooks.core.text.Inline;
+import mod.gottsch.forge.gottschbooks.core.text.LoreText;
 import mod.gottsch.forge.gottschbooks.core.text.TextSearch;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
@@ -64,7 +65,9 @@ import java.util.Optional;
  * Two modes, from the book's {@code book.md}:
  * <ul>
  *     <li><b>Lore book</b>: one text, opening on a title page (icon, title, author), turned page by page. The reader
- *     remembers the section you were on for each book until the game closes.</li>
+ *     remembers the section you were on for each book until the game closes. A book in chapters ({@link LoreText})
+ *     starts each on a new page and, with two or more, lists them on the title page; a click on one, or a
+ *     {@code [text](entry:02-the-storm#anchor)} link, jumps to it, and Back and Contents sit above the book.</li>
  *     <li><b>Manual</b> ({@link Manual}): opens on the contents (the landing text, then each category's entries);
  *     a click opens an entry, {@code [text](entry:id#anchor)} links jump between entries, and Back and Contents sit
  *     above the book. Entries can show {@code spotlight}, {@code recipe}, {@code image} and {@code entity}
@@ -124,6 +127,11 @@ public class BookScreen extends Screen {
     // lore book
     private final Optional<Component> author;
     private final List<Block> loreBlocks;
+    /** the chapters, each knowing its first block in {@link #loreBlocks}; empty for a book of text.md alone */
+    private final List<LoreText.Chapter> chapters;
+    /** where to open a lore book ({@code chapter} or {@code chapter#anchor}), once the layout exists */
+    @Nullable
+    private String pendingChapter;
     // manual
     @Nullable
     private final Manual manual;
@@ -241,17 +249,28 @@ public class BookScreen extends Screen {
         }
     }
 
-    /** a lore book */
+    /** a lore book of one text */
     public BookScreen(LoadedBook book, BookText text, ItemStack icon) {
-        super(loreTitle(book, text));
+        this(book, LoreText.of(text), icon, Optional.empty());
+    }
+
+    /** a lore book, opened at {@code target} ({@code chapter} or {@code chapter#anchor}), else where it was left */
+    public BookScreen(LoadedBook book, LoreText lore, ItemStack icon, Optional<String> target) {
+        super(loreTitle(book, lore.text()));
+        BookText text = lore.text();
         this.bookId = book.id();
         this.icon = icon;
         this.author = text.get("author").map(Component::literal);
         List<Block> body = new ArrayList<>(text.blocks());
+        int removed = 0;
         if (text.get("title").isEmpty() && !body.isEmpty() && body.get(0) instanceof Block.Heading h && h.level() == 1) {
             body.remove(0);
+            removed = 1;
         }
         this.loreBlocks = body;
+        int shift = removed;
+        this.chapters = lore.chapters().stream().map(c -> new LoreText.Chapter(c.name(), c.anchor(), c.title(), c.block() - shift)).toList();
+        this.pendingChapter = target.orElse(null);
         this.manual = null;
         ResourceLocation skin = book.skin();
         this.cover = art(skin, "cover");
@@ -267,6 +286,7 @@ public class BookScreen extends Screen {
         this.icon = icon;
         this.author = Optional.empty();
         this.loreBlocks = List.of();
+        this.chapters = List.of();
         this.manual = manual;
         ResourceLocation skin = book.skin();
         this.cover = art(skin, "cover");
@@ -350,7 +370,11 @@ public class BookScreen extends Screen {
 
         paginate();
         markOpened();
-        if (pendingAnchor != null) {
+        int chapterPage = pendingChapter == null ? -1 : pageOfLoreTarget(pendingChapter);
+        pendingChapter = null;
+        if (chapterPage >= 0) {
+            view = viewOf(chapterPage);
+        } else if (pendingAnchor != null) {
             view = viewOf(pageOfAnchor(pendingAnchor));
             pendingAnchor = null;
         } else if (pendingItem != null) {
@@ -634,7 +658,14 @@ public class BookScreen extends Screen {
         textW = wantsOnePage() ? wideTextW : pageTextW;
         Flow flow = new Flow();
         if (!isManual()) {
+            if (hasContents()) {
+                // before the text's own blocks, so a bookmark on the title or the contents finds its page
+                flow.block = -2;
+            }
             flow.add(Kind.TITLE, titleHeight(title, author.isPresent()));
+            if (hasContents()) {
+                chapterContents(flow);
+            }
             flow.topLevel(loreBlocks);
         } else if (entry == null) {
             contents(flow);
@@ -652,6 +683,28 @@ public class BookScreen extends Screen {
             flow.topLevel(blocks);
         }
         return flow.lines;
+    }
+
+    /** a lore book with two or more chapters lists them after its title */
+    private boolean hasContents() {
+        return chapters.size() >= 2;
+    }
+
+    /** a lore book's chapters, each a row that opens it; the text starts on the next page */
+    private void chapterContents(Flow flow) {
+        flow.block = -1;
+        flow.blank();
+        Line heading = flow.add(Kind.CATEGORY, ROW_H + 2);
+        heading.label = Component.translatable("gottschbooks.book.contents");
+        heading.keep = ROW_H;
+        for (LoreText.Chapter chapter : chapters) {
+            Line row = flow.add(Kind.LINK_ROW, ROW_H);
+            row.label = chapter.title();
+            row.target = chapter.name();
+        }
+        flow.add(Kind.BREAK, 0);
+        flow.textBefore = false;
+        flow.listBefore = false;
     }
 
     /**
@@ -956,14 +1009,36 @@ public class BookScreen extends Screen {
     }
 
     private int pageOfAnchor(String anchor) {
-        for (int p = 0; p < pages.size(); p++) {
+        return Math.max(0, pageOfAnchor(anchor, 0));
+    }
+
+    /** the first page from {@code from} on with the heading {@code {#anchor}}; -1 when there is none */
+    private int pageOfAnchor(String anchor, int from) {
+        for (int p = from; p < pages.size(); p++) {
             for (Line line : pages.get(p).lines()) {
                 if (anchor.equals(line.anchor)) {
                     return p;
                 }
             }
         }
-        return 0;
+        return -1;
+    }
+
+    /**
+     * the page a lore book's link leads to: {@code chapter} (its first page), {@code chapter#anchor} (the heading in
+     * that chapter), or {@code text#anchor} (in text.md); -1 when there is no such chapter or heading
+     */
+    private int pageOfLoreTarget(String target) {
+        String[] parts = target.split("#", 2);
+        int from = 0;
+        if (!parts[0].equals(LoreText.TEXT)) {
+            Optional<LoreText.Chapter> chapter = chapters.stream().filter(c -> c.name().equals(parts[0])).findFirst();
+            if (chapter.isEmpty()) {
+                return -1;
+            }
+            from = pageOfBlock(chapter.get().block());
+        }
+        return parts.length > 1 ? pageOfAnchor(parts[1], from) : from;
     }
 
     /**
@@ -1091,6 +1166,15 @@ public class BookScreen extends Screen {
     /** opens {@code target} ({@code entry}, {@code entry#anchor}, or null for the contents), remembering where we were */
     private void go(@Nullable String target) {
         if (!isManual()) {
+            // a lore book stays one text: a link turns to its page, and null is the contents
+            int to = target == null ? (hasContents() ? pageOfBlock(-1) : -1) : pageOfLoreTarget(target);
+            if (to < 0) {
+                return;
+            }
+            history.push(new Place(null, view));
+            view = viewOf(to);
+            updateButtons();
+            minecraft.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.BOOK_PAGE_TURN, 1.0F));
             return;
         }
         String to = null, anchor = null;
@@ -1225,7 +1309,7 @@ public class BookScreen extends Screen {
             }
             return true;
         }
-        if (key == GLFW.GLFW_KEY_BACKSPACE && isManual() && !history.isEmpty()) {
+        if (key == GLFW.GLFW_KEY_BACKSPACE && !history.isEmpty()) {
             goBack();
             return true;
         }
@@ -1330,7 +1414,10 @@ public class BookScreen extends Screen {
         }
     }
 
-    /** Back and Bookmark on the left, Search and Contents (a manual's) on the right, above the book */
+    /**
+     * Back and Bookmark on the left, Search (a manual's) and Contents (a manual's, or a lore book's chapter list) on
+     * the right, above the book
+     */
     private void drawNav(GuiGraphics g, int mouseX, int mouseY) {
         int y = bookY - LINE_H;
         int left = bookX + 4;
@@ -1347,10 +1434,15 @@ public class BookScreen extends Screen {
                         left, y, NAV_BOOKMARK, mouseX, mouseY);
             }
         }
+        int right = bookX + bookW - 4;
         if (!isManual()) {
+            // a lore book's chapter list, from anywhere but its own pages
+            if (hasContents() && view != viewOf(pageOfBlock(-1))) {
+                Component contents = Component.translatable("gottschbooks.book.contents");
+                navLabel(g, contents, right - font.width(contents), y, NAV_CONTENTS, mouseX, mouseY);
+            }
             return;
         }
-        int right = bookX + bookW - 4;
         if (entry != null) {
             Component contents = Component.translatable("gottschbooks.book.contents");
             right -= font.width(contents);

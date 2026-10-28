@@ -132,8 +132,50 @@ class BookLintTest {
         assertEquals(5, problems.size(), problems.toString());
 
         String lore = "assets/mymod/books/diary/";
-        assertEquals(List.of(lore + "en_us/text.md: link to 'text': links between entries only work in manuals"),
-                lint(lore + "en_us/text.md", "Read [on](entry:text).\n"));
+        assertEquals(List.of(lore + "en_us/text.md: link to 'guide': no chapter 'guide' (a lore book links to its chapters,"
+                        + " 01-name, and to headings in them or in text.md)"),
+                lint(lore + "en_us/text.md", "Read [on](entry:text), [the guide](entry:guide).\n"));
+    }
+
+    @Test
+    void cleanChapters() {
+        String lore = "assets/mymod/books/diary/";
+        assertEquals(List.of(), lint(
+                lore + "en_us/01-arrival.md", "---\ntitle: The Log\n---\n# Arrival\nSee [the storm](entry:02-the-storm#wreck).\n",
+                lore + "en_us/02-the-storm.md", "# The Storm\n## The wreck {#wreck}\nBack to [the start](entry:01-arrival).\n",
+                lore + "ko_kr/01-arrival.md", "---\ntitle: 일지\n---\n# 도착\n",
+                // with text.md, the title is text.md's
+                "assets/mymod/books/log/en_us/text.md", "# The Log {#top}\n",
+                "assets/mymod/books/log/en_us/1-a.md", "# A\n[top](entry:text#top)\n"));
+    }
+
+    @Test
+    void chapterProblems() {
+        String lore = "assets/mymod/books/diary/";
+        List<String> problems = lint(
+                lore + "en_us/text.md", "---\ntitle: The Log\n---\n",
+                lore + "en_us/01-arrival.md", "# Arrival\n[gone](entry:03-nowhere), [no heading](entry:02-storm#nope)\n",
+                lore + "en_us/1-again.md", "# Again\n",
+                lore + "en_us/02-storm.md", "Wind, and no heading.\n",
+                lore + "en_us/arrival.md", "# Not a chapter\n",
+                lore + "en_us/chapters/03-calm.md", "# In a folder\n",
+                lore + "de_de/02-sturm.md", "# Der Sturm\n");
+        assertHas(problems, lore + "en_us/01-arrival.md", "link to '03-nowhere': no chapter '03-nowhere'");
+        assertHas(problems, lore + "en_us/01-arrival.md", "link to '02-storm#nope': entry '02-storm' has no heading {#nope}");
+        assertHas(problems, lore + "en_us/1-again.md", "chapter 1 again (01-arrival.md has that number too)");
+        assertHas(problems, lore + "en_us/02-storm.md", "chapter has no heading, so its title is made from its file name");
+        assertHas(problems, lore + "en_us/arrival.md", "isn't text.md or a chapter");
+        assertHas(problems, lore + "en_us/chapters/03-calm.md", "isn't text.md or a chapter");
+        assertHas(problems, lore + "de_de/02-sturm.md", "no en_us/02-sturm.md: chapters are matched across languages by file name");
+        assertEquals(7, problems.size(), problems.toString());
+    }
+
+    @Test
+    void chaptersNeedATitleWithoutText() {
+        String lore = "assets/mymod/books/diary/";
+        assertEquals(List.of(lore + "en_us/01-a.md: no title: (with no text.md, the book's front matter is its first chapter's),"
+                        + " so the title page shows the book's id"),
+                lint(lore + "en_us/01-a.md", "# A\n", lore + "en_us/02-b.md", "---\ntitle: Too late\n---\n# B\n"));
     }
 
     @Test
@@ -195,7 +237,7 @@ class BookLintTest {
         assertEquals(List.of(GUIDE + "book.md: manual has no _index.md, so its title is its id and it has no landing text"),
                 lint(GUIDE + "book.md", MANUAL, GUIDE + "en_us/a.md", "Text.\n"));
         String lore = "assets/mymod/books/diary/";
-        assertEquals(List.of(lore + "book.md: lore book has no text.md; files: [chapter]"),
+        assertEquals(List.of(lore + "book.md: lore book has no text.md and no chapters (01-name.md); files: [chapter]"),
                 lint(lore + "en_us/chapter.md", "Text.\n"));
     }
 

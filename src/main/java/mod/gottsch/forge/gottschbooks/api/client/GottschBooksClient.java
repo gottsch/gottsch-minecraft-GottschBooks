@@ -23,7 +23,7 @@ import mod.gottsch.forge.gottschbooks.client.BookScreen;
 import mod.gottsch.forge.gottschbooks.client.Icons;
 import mod.gottsch.forge.gottschbooks.client.LoadedBook;
 import mod.gottsch.forge.gottschbooks.client.Manual;
-import mod.gottsch.forge.gottschbooks.core.text.BookText;
+import mod.gottsch.forge.gottschbooks.core.text.LoreText;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -60,7 +60,8 @@ public final class GottschBooksClient {
 
     /**
      * Opens manual {@code book} at {@code entry} ({@code "gems"}, or {@code "gems#ruby"} for a heading's anchor). An
-     * entry that doesn't exist, or is still locked, opens the contents instead.
+     * entry that doesn't exist, or is still locked, opens the contents instead. A lore book opens at the chapter
+     * {@code entry} names ({@code "02-the-storm"}, or {@code "02-the-storm#wreck"}), else where it was left.
      */
     public static boolean open(ResourceLocation book, String entry) {
         return open(book, Optional.empty(), Optional.of(entry), Optional.empty());
@@ -88,16 +89,16 @@ public final class GottschBooksClient {
             minecraft.setScreen(screen);
             return true;
         }
-        Optional<BookText> text = loaded.flatMap(b -> b.entry(LoadedBook.LORE_ENTRY, locale));
+        Optional<LoreText> text = loaded.flatMap(b -> b.lore(locale));
         if (text.isEmpty()) {
-            GottschBooks.LOGGER.warn("no text for book {} (looked for assets/{}/books/{}/<locale>/{}.md)",
+            GottschBooks.LOGGER.warn("no text for book {} (looked for assets/{}/books/{}/<locale>/{}.md and chapters, NN-name.md)",
                     book, book.getNamespace(), book.getPath(), LoadedBook.LORE_ENTRY);
             if (minecraft.player != null) {
                 minecraft.player.displayClientMessage(Component.translatable("gottschbooks.book.missing", book.toString()), true);
             }
             return false;
         }
-        minecraft.setScreen(new BookScreen(loaded.get(), text.get(), icon.orElseGet(() -> new ItemStack(Items.BOOK)).copyWithCount(1)));
+        minecraft.setScreen(new BookScreen(loaded.get(), text.get(), icon.orElseGet(() -> new ItemStack(Items.BOOK)).copyWithCount(1), entry));
         return true;
     }
 }
