@@ -161,12 +161,38 @@ class BookExportTest {
         String page = pages.get("index.html");
         assertTrue(page.contains("<h1>The Lighthouse Keeper&#39;s Journal</h1>"), page);
         assertTrue(page.contains("<p class=\"author\">by Old Maren</p>"), page);
-        assertEquals(4, count(page, "<hr class=\"ornament\">"));
+        assertEquals(2, count(page, "<hr class=\"ornament\">"));
         assertTrue(page.contains("Picture: <code>minecraft:spyglass</code>"), page);
         assertTrue(page.contains("<th style=\"text-align:center\">High water</th>"), page);
         assertTrue(page.contains("Item: <code>minecraft:potion{Potion:&quot;minecraft:water_breathing&quot;}</code>"), page);
-        assertFalse(page.contains("<nav>"), page);
-        assertFalse(page.contains("href="), page);
+        assertFalse(page.contains("<nav><a"), page);
+    }
+
+    @Test
+    void journalChapters() throws IOException {
+        String page = pages("journal", BookExport.Format.HTML).get("index.html");
+        // the chapter list, then text.md, then the chapters in order, each heading taking the chapter's name as its id
+        assertTrue(page.contains("<nav>\n<ol class=\"contents\">\n<li><a href=\"#01-the-storms\">The Storms</a></li>\n"
+                + "<li><a href=\"#02-the-visitor\">The Visitor</a></li>\n<li><a href=\"#03-the-calm\">The Calm</a></li>\n</ol>\n</nav>\n"
+                + "<p class=\"note\">Found in the lamp room"), page);
+        int storms = page.indexOf("<h1 id=\"01-the-storms\">The Storms</h1>");
+        int visitor = page.indexOf("<h1 id=\"02-the-visitor\">The Visitor</h1>");
+        int calm = page.indexOf("<h1 id=\"03-the-calm\">The Calm</h1>");
+        assertTrue(storms > 0 && storms < visitor && visitor < calm, page);
+        // a link to a chapter leads down the page
+        assertTrue(page.contains("<a href=\"#02-the-visitor\">to the door</a>"), page);
+    }
+
+    @Test
+    void koreanJournal() throws IOException {
+        LoadedBook book = BookExport.load(examples().resolve("journal"));
+        String page = BookExport.pages(book, "ko_kr", BookExport.Format.HTML).get("index.html");
+        assertTrue(page.contains("<html lang=\"ko-kr\">"), page);
+        assertTrue(page.contains("<h1>등대지기의 일지</h1>"), page);
+        assertTrue(page.contains("<p class=\"author\">by 늙은 마렌</p>"), page);
+        assertTrue(page.contains("<li><a href=\"#01-the-storms\">폭풍</a></li>"), page);
+        assertTrue(page.contains("<h1 id=\"03-the-calm\">고요</h1>"), page);
+        assertFalse(page.contains("The Storms"), page);
     }
 
     @Test
@@ -214,7 +240,12 @@ class BookExportTest {
         Map<String, String> pages = pages("journal", BookExport.Format.MARKDOWN);
         assertEquals(Set.of("Home.md"), pages.keySet());
         String page = pages.get("Home.md");
-        assertTrue(page.startsWith("# The Lighthouse Keeper's Journal\n\n*by Old Maren*\n\n*First night of the autumn storms.*"), page);
+        assertTrue(page.startsWith("# The Lighthouse Keeper's Journal\n\n*by Old Maren*\n\n## Contents\n\n"
+                + "1. [The Storms](#the-storms)\n2. [The Visitor](#the-visitor)\n3. [The Calm](#the-calm)\n\n"
+                + "> Found in the lamp room"), page);
+        assertTrue(page.contains("# The Storms\n\n*First night of the autumn storms.*"), page);
+        // a link to a chapter uses the id GitHub gives its heading
+        assertTrue(page.contains("[to the door](#the-visitor)"), page);
         assertTrue(page.contains("| Day | High water | Low water |\n|---|:---:|:---:|\n"), page);
         assertTrue(page.contains("> **Picture:** `minecraft:prismarine_shard`\n>\n> A gift from the deep"), page);
     }
