@@ -29,7 +29,7 @@ page written for an AI, with the rules that keep it from inventing ids or using 
 |---|---|---|
 | Text | one file, read front to back | many entries, in categories |
 | Opens on | a title page: icon, title, author | the contents: landing text, then each category's entries |
-| Getting around | turning pages | clicking entries, links, Back, Contents, Search |
+| Getting around | turning pages, bookmarks | clicking entries, links, Back, Contents, Search, bookmarks |
 | Extras | illustrations, spotlights, recipes, images, mobs | the same, plus entries locked behind advancements |
 
 Both flow their text onto as many pages as the window needs, one or two pages at a time, so no text runs off a page
@@ -439,6 +439,15 @@ category; search results show it too. Under the manual's title, *New entries: 5*
 read** link for a player who already knows the mod. An entry added in a mod's update shows as new, so players find
 what changed. What a player has opened is kept on their computer, in `gottschbooks/reading.json` in the game
 folder, for every world alike; deleting the file makes every entry new again. There is nothing to write for it.
+
+## Bookmarks
+
+Any page of a lore book or a manual entry can be bookmarked: **Bookmark** above the book (or Ctrl+D) marks the pages
+showing, and **Remove bookmark** takes it off again. Each bookmark is a coloured ribbon out of the book's right
+edge; hovering shows where it goes (the entry, and the first words of its page), a click opens it, and a right-click
+removes it. A book keeps up to 10. Pages reflow with the window's size, so a bookmark remembers the paragraph (or
+picture, or table) its page starts with, not a page number. Bookmarks are kept with the "new" marks, in
+`gottschbooks/reading.json`. There is nothing to write for them.
 
 ## Item lookup
 

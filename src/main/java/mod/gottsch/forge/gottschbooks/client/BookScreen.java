@@ -72,6 +72,10 @@ import java.util.Optional;
  *     player hasn't opened yet ({@link ReadingLog}) have a red dot on the contents, as do their categories, and the
  *     contents counts them with a "mark all read" link.</li>
  * </ul>
+ * In either, a page can be bookmarked (Bookmark above the book, or Ctrl+D): each bookmark is a ribbon out of the
+ * book's right edge, which a click opens and a right-click removes. A bookmark keeps the block its page starts with,
+ * so it finds its page however the window lays the text out.
+ * <p>
  * Moved from Magic Treasures' {@code LoreBookScreen}.
  *
  * @author Mark Gottschling on 10/17/2026
@@ -164,6 +168,7 @@ public class BookScreen extends Screen {
     private final List<ItemHit> itemHits = new ArrayList<>();
     private final List<LinkHit> linkHits = new ArrayList<>();
     private final List<TextHit> textHits = new ArrayList<>();
+    private final List<TabHit> tabHits = new ArrayList<>();
 
     private enum Kind { TEXT, BLANK, ORNAMENT, TITLE, ENTRY_TITLE, ILLUSTRATION, SPOTLIGHT, RECIPE, IMAGE, ENTITY,
         CATEGORY, LINK_ROW, BREAK, HEADING, TABLE_HEADER, TABLE_ROW, SEARCH_BOX }
@@ -204,6 +209,8 @@ public class BookScreen extends Screen {
         int row;
         /** a contents row for an entry not yet opened, or a category holding one */
         boolean fresh;
+        /** which of the text's top-level blocks the line belongs to, for bookmarks */
+        int block;
 
         Line(Kind kind, int height, int section) {
             this.kind = kind;
@@ -227,6 +234,12 @@ public class BookScreen extends Screen {
     }
 
     private record TextHit(int x, int y, FormattedCharSequence text) {}
+
+    private record TabHit(int x, int y, int w, int h, ReadingLog.Bookmark mark) {
+        boolean contains(double mx, double my) {
+            return mx >= x && mx < x + w && my >= y && my < y + h;
+        }
+    }
 
     /** a lore book */
     public BookScreen(LoadedBook book, BookText text, ItemStack icon) {
@@ -382,14 +395,25 @@ public class BookScreen extends Screen {
         /** the style being laid out; {@code textW} follows it */
         boolean wide = wantsOnePage();
         int section;
+        /** the top-level block being laid out */
+        int block;
         boolean textBefore;
         boolean listBefore;
 
         Line add(Kind kind, int height) {
             Line line = new Line(kind, height, section);
             line.wide = wide;
+            line.block = block;
             lines.add(line);
             return line;
+        }
+
+        /** the text's top-level blocks, each line knowing which one it came from */
+        void topLevel(List<Block> blocks) {
+            for (int i = 0; i < blocks.size(); i++) {
+                block = i;
+                block(blocks.get(i));
+            }
         }
 
         void blank() {
@@ -611,7 +635,7 @@ public class BookScreen extends Screen {
         Flow flow = new Flow();
         if (!isManual()) {
             flow.add(Kind.TITLE, titleHeight(title, author.isPresent()));
-            flow.blocks(loreBlocks);
+            flow.topLevel(loreBlocks);
         } else if (entry == null) {
             contents(flow);
         } else if (SEARCH.equals(entry)) {
@@ -625,7 +649,7 @@ public class BookScreen extends Screen {
             if (!blocks.isEmpty() && blocks.get(0) instanceof Block.Heading h && h.level() == 1) {
                 blocks.remove(0);
             }
-            flow.blocks(blocks);
+            flow.topLevel(blocks);
         }
         return flow.lines;
     }
@@ -683,6 +707,76 @@ public class BookScreen extends Screen {
     private List<Manual.Entry> unread() {
         return manual.allEntries().stream().filter(Manual.Entry::unlocked)
                 .filter(entry -> !ReadingLog.isOpened(bookId, entry.id())).toList();
+    }
+
+    // ---- bookmarks ----
+
+    /** what bookmarks here are kept under: the entry being read, {@code ""} in a lore book; null on the contents or search */
+    @Nullable
+    private String bookmarkEntry() {
+        if (!isManual()) {
+            return "";
+        }
+        return entry == null || SEARCH.equals(entry) ? null : entry;
+    }
+
+    /** the bookmark on the pages showing now, if any */
+    private Optional<ReadingLog.Bookmark> bookmarkHere() {
+        String at = bookmarkEntry();
+        if (at == null) {
+            return Optional.empty();
+        }
+        return ReadingLog.bookmarks(bookId).stream()
+                .filter(mark -> mark.entry().equals(at) && viewOf(pageOfBlock(mark.block())) == view).findFirst();
+    }
+
+    /** bookmarks the pages showing (by the first block that starts on them), or removes their bookmark */
+    private void toggleBookmark() {
+        String at = bookmarkEntry();
+        View shown = views.get(Math.min(view, views.size() - 1));
+        if (at == null || shown.count() == 0) {
+            return;
+        }
+        Optional<ReadingLog.Bookmark> here = bookmarkHere();
+        if (here.isPresent()) {
+            ReadingLog.removeBookmark(bookId, here.get());
+            return;
+        }
+        List<Line> lines = pages.get(shown.first()).lines();
+        List<Line> before = shown.first() > 0 ? pages.get(shown.first() - 1).lines() : List.of();
+        // a paragraph carried over from the page before belongs to that page; the first block begun here marks this one
+        int carried = before.isEmpty() ? Integer.MIN_VALUE : before.get(before.size() - 1).block;
+        int block = lines.stream().mapToInt(line -> line.block).filter(b -> b != carried).findFirst()
+                .orElse(lines.isEmpty() ? 0 : lines.get(0).block);
+        String text = lines.stream().map(BookScreen::lineText).map(String::strip).filter(t -> !t.isEmpty()).findFirst().orElse("");
+        ReadingLog.addBookmark(bookId, new ReadingLog.Bookmark(at, block, text.length() > 40 ? text.substring(0, 40).strip() + "…" : text));
+    }
+
+    /** opens a bookmark's page, through its entry in a manual */
+    private void goTo(ReadingLog.Bookmark mark) {
+        if (isManual()) {
+            if (manual.entry(mark.entry()).isEmpty()) {
+                return;
+            }
+            history.push(new Place(entry, view));
+            show(mark.entry(), null, -1);
+        } else {
+            minecraft.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.BOOK_PAGE_TURN, 1.0F));
+        }
+        view = viewOf(pageOfBlock(mark.block()));
+        updateButtons();
+    }
+
+    /** the first page with a line of {@code block} or a later one; else the last page */
+    private int pageOfBlock(int block) {
+        for (int p = 0; p < pages.size(); p++) {
+            for (Line line : pages.get(p).lines()) {
+                if (line.block >= block) {
+                    return p;
+                }
+            }
+        }
+        return Math.max(0, pages.size() - 1);
     }
 
     /** records the entry on show as read */
@@ -1055,10 +1149,21 @@ public class BookScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        for (TabHit tab : tabHits) {
+            if (tab.contains(mouseX, mouseY)) {
+                if (button == 0) {
+                    goTo(tab.mark());
+                } else if (button == 1) {
+                    ReadingLog.removeBookmark(bookId, tab.mark());
+                }
+                return true;
+            }
+        }
         if (button == 0) {
             for (LinkHit hit : linkHits) {
                 if (hit.contains(mouseX, mouseY)) {
                     switch (hit.target()) {
+                        case NAV_BOOKMARK -> toggleBookmark();
                         case NAV_BACK -> goBack();
                         case NAV_CONTENTS -> go(null);
                         case NAV_SEARCH -> openSearch();
@@ -1097,6 +1202,10 @@ public class BookScreen extends Screen {
             } else {
                 searchBox.keyPressed(key, scanCode, modifiers);
             }
+            return true;
+        }
+        if (key == GLFW.GLFW_KEY_D && hasControlDown() && bookmarkEntry() != null) {
+            toggleBookmark();
             return true;
         }
         if (key == GLFW.GLFW_KEY_F && hasControlDown() && isManual()) {
@@ -1155,6 +1264,10 @@ public class BookScreen extends Screen {
 
     /** the click value of the contents' "mark all read" link */
     private static final String MARK_READ = "\u0000mark_read";
+    private static final String NAV_BOOKMARK = "\u0000bookmark";
+    /** the ribbons' colours, in turn, and their size: how far one sticks out, tucked under the cover, and apart */
+    private static final int[] RIBBONS = {0xFFB03A2E, 0xFF2E6DB0, 0xFF3A8A3A, 0xFFC08A1E, 0xFF7A3AA0, 0xFF2E9A9A};
+    private static final int RIBBON_OUT = 7, RIBBON_TUCK = 5, RIBBON_H = 11, RIBBON_STEP = 15;
     private static final String NAV_BACK = "\u0000back", NAV_CONTENTS = "\u0000contents", NAV_SEARCH = "\u0000search";
 
     /** the book, drawn before the widgets so the page buttons sit on top of it */
@@ -1162,6 +1275,8 @@ public class BookScreen extends Screen {
         itemHits.clear();
         linkHits.clear();
         textHits.clear();
+        // under the cover, so each ribbon seems to come from between the pages
+        drawRibbons(g, mouseX, mouseY);
         nineSlice(g, cover, bookX, bookY, bookW, bookH, COVER_BORDER);
         View shown = views.get(Math.min(view, views.size() - 1));
         // one wide page across the book, or a spread's two (the second blank when the spread has one page)
@@ -1182,16 +1297,58 @@ public class BookScreen extends Screen {
                 g.drawString(font, number, x + (w - font.width(number)) / 2, y + pageH - 12, NOTE, false);
             }
         }
-        if (isManual()) {
-            drawNav(g, mouseX, mouseY);
+        drawNav(g, mouseX, mouseY);
+    }
+
+    /** each bookmark as a ribbon out of the book's right edge; the one for the pages showing sticks out further */
+    private void drawRibbons(GuiGraphics g, int mouseX, int mouseY) {
+        tabHits.clear();
+        List<ReadingLog.Bookmark> marks = ReadingLog.bookmarks(bookId);
+        Optional<ReadingLog.Bookmark> here = bookmarkHere();
+        int y = bookY + COVER_BORDER + 4;
+        for (int i = 0; i < marks.size(); i++) {
+            ReadingLog.Bookmark mark = marks.get(i);
+            // an entry since locked, or gone from the manual, keeps its bookmark but shows none
+            if (isManual() && manual.entry(mark.entry()).isEmpty()) {
+                continue;
+            }
+            int edge = bookX + bookW;
+            int out = RIBBON_OUT + (here.filter(mark::equals).isPresent() ? 3 : 0);
+            TabHit hit = new TabHit(edge, y, out + 1, RIBBON_H, mark);
+            if (hit.contains(mouseX, mouseY)) {
+                out++;
+            }
+            int color = RIBBONS[i % RIBBONS.length], shade = (color & 0xFEFEFE) >> 1 | 0xFF000000;
+            int notch = y + RIBBON_H / 2;
+            // the ribbon, its end cut in a notch (drawn as the parts above and below it), with a darker underside
+            g.fill(edge - RIBBON_TUCK, y, edge + out - 2, y + RIBBON_H, color);
+            g.fill(edge + out - 2, y, edge + out, notch - 1, color);
+            g.fill(edge + out - 2, notch + 1, edge + out, y + RIBBON_H, color);
+            g.fill(edge - RIBBON_TUCK, y + RIBBON_H - 1, edge + out, y + RIBBON_H, shade);
+            tabHits.add(hit);
+            y += RIBBON_STEP;
         }
     }
 
-    /** Back on the left, Search and Contents on the right, above the book */
+    /** Back and Bookmark on the left, Search and Contents (a manual's) on the right, above the book */
     private void drawNav(GuiGraphics g, int mouseX, int mouseY) {
         int y = bookY - LINE_H;
+        int left = bookX + 4;
         if (!history.isEmpty()) {
-            navLabel(g, Component.translatable("gottschbooks.book.back"), bookX + 4, y, NAV_BACK, mouseX, mouseY);
+            Component back = Component.translatable("gottschbooks.book.back");
+            navLabel(g, back, left, y, NAV_BACK, mouseX, mouseY);
+            left += font.width(back) + 12;
+        }
+        if (bookmarkEntry() != null) {
+            boolean marked = bookmarkHere().isPresent();
+            // a book with every ribbon used offers only to remove one
+            if (marked || ReadingLog.bookmarks(bookId).size() < ReadingLog.MAX_BOOKMARKS) {
+                navLabel(g, Component.translatable(marked ? "gottschbooks.book.unbookmark" : "gottschbooks.book.bookmark"),
+                        left, y, NAV_BOOKMARK, mouseX, mouseY);
+            }
+        }
+        if (!isManual()) {
+            return;
         }
         int right = bookX + bookW - 4;
         if (entry != null) {
@@ -1513,6 +1670,20 @@ public class BookScreen extends Screen {
         renderBackground(g);
         drawBook(g, mouseX, mouseY);
         super.render(g, mouseX, mouseY, partialTick);
+        for (TabHit tab : tabHits) {
+            if (tab.contains(mouseX, mouseY)) {
+                ReadingLog.Bookmark mark = tab.mark();
+                Component where = isManual() ? manual.entry(mark.entry()).map(Manual.Entry::title).orElse(title) : title;
+                List<Component> lines = new ArrayList<>();
+                lines.add(where);
+                if (!mark.text().isEmpty()) {
+                    lines.add(Component.literal(mark.text()).withStyle(ChatFormatting.GRAY));
+                }
+                lines.add(Component.translatable("gottschbooks.book.bookmark.remove").withStyle(ChatFormatting.DARK_GRAY));
+                g.renderComponentTooltip(font, lines, mouseX, mouseY);
+                return;
+            }
+        }
         for (ItemHit hit : itemHits) {
             if (hit.contains(mouseX, mouseY)) {
                 g.renderTooltip(font, hit.item(), mouseX, mouseY);
