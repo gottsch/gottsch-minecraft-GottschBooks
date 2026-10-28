@@ -54,6 +54,8 @@ players' hands, use the library's own item, `gottschbooks:book`, which opens wha
 - **Name it:** a lang line `"book.mymod.guide": "My Guide"` in your resource pack, or on the stack (`item_name` on
   1.21.1, a `display` name on 1.20.1).
 - **Open it from a command block or function:** `/gottschbooks open @p mymod:guide`.
+- **Put it on a lectern:** use the book on an empty lectern, and anyone can right-click it to read it (see
+  [On a lectern](#on-a-lectern)).
 
 So a modpack can ship its own guide with no mod at all. A mod only needs code for an item of its own (its own
 model, name and creative tab), which the quick starts below show.
@@ -559,7 +561,7 @@ A server owner can turn every announcement off with `announceBooks = false` in t
 `serverconfig/gottschbooks-server.toml`. That only silences announcements; books given on first join are still
 given.
 
-With an entry, reading the book from a `BookItem` records it for the player and fires the
+With an entry, reading the book from a `BookItem` or a lectern records it for the player and fires the
 `gottschbooks:book_read` advancement trigger:
 
 ```json
@@ -592,6 +594,22 @@ Book tags live at `data/<ns>/tags/gottschbooks/book/<tag>.json` (`{"values": ["m
   the screen that was open). Client only: call it from a screen, a keybind or the client branch of `Item#use`.
 - **A command:** `/gottschbooks open <players> <book> [entry]` (operators). Handy for tutorials and command
   blocks.
+
+### On a lectern
+
+Any `BookItem` stack that names a book, `gottschbooks:book` or a mod's own book item, goes on a vanilla lectern,
+like a written book: use it on an empty lectern. No tag is needed.
+
+- **Reading:** right-clicking the lectern opens the book for that player in the reader, instead of vanilla's lectern
+  screen. A manual opens where that player left it. It counts as reading the book, for the `gottschbooks:book_read`
+  trigger (when the book's entry tracks reading), and for the vanilla "Interactions with Lectern" statistic.
+- **Taking it off:** sneak and right-click the lectern with both hands empty. The book goes into your inventory, or
+  drops at your feet when it's full. (The reader has no Take Book button, so this stands in for vanilla's.) Sneaking
+  with something in hand does what it does on any lectern: nothing to the book.
+- **Breaking the lectern** drops the book, still the same book.
+- **Redstone:** vanilla's comparator signal follows a written book's page, but the server doesn't know which page a
+  player is reading, so a lectern holding a Gottsch Books book gives a steady signal instead, the same however far
+  anyone reads. There is no page-turn pulse.
 
 ## Depending on Gottsch Books
 
