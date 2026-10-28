@@ -162,7 +162,7 @@ A file may start with `key: value` lines between two `---` lines.
 | `icon` | categories, entries | the item shown beside it on the contents and on the entry's title: give every category and entry one |
 | `sort` | categories, entries | a whole number; lower comes first. Use 10, 20, 30 ... so the person can insert things later |
 | `category` | entries | the id of a category file (`basics` for `categories/basics.md`). Every entry needs one that exists |
-| `advancement` | entries | an advancement id; the entry stays hidden until the player has it. Only with a real id |
+| `advancement` | entries | an advancement id; the entry stays hidden until the player has it, and a toast tells them when it unlocks. Only with a real id of an advancement that has a `display` |
 | `items` | entries | the items the entry explains in plain text, beyond its spotlights, recipes and icon: item ids and `#ns:tag` item tags, separated by commas, in double quotes: `items: "mymod:wrench, #mymod:wrenches"`. Only real ids. An id written with NBT answers only for stacks that have them; use that only when the person says how their item is told apart |
 | `lookup_from` | entries, book.md | leave it out (the entry answers for everything it shows). `items` when the entry's icon or spotlights are only for show, such as a vanilla torch on a lighting entry; then list what it explains in `items:`. `none` for an entry that explains no item |
 
