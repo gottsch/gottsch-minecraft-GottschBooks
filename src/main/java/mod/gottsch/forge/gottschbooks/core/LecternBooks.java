@@ -114,7 +114,7 @@ public final class LecternBooks {
     private static void read(ServerPlayer player, ResourceLocation id) {
         GottschBooksNetwork.send(player, new OpenBookPayload(id, ""));
         player.awardStat(Stats.INTERACT_WITH_LECTERN);
-        if (Books.getDef(id, player.registryAccess()).filter(BookDef::tracked).isPresent()) {
+        if (Books.getDef(id, player.level().registryAccess()).filter(BookDef::tracked).isPresent()) {
             Books.markRead(player, id);
         }
     }
