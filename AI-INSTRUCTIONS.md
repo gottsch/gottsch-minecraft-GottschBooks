@@ -107,6 +107,21 @@ assets/<ns>/books/<book>/
     └── text.md                 the whole text
 ```
 
+A long lore book may be split into chapters, one file each, read in the order of their numbers:
+
+```
+assets/<ns>/books/<book>/
+└── en_us/
+    ├── text.md                 optional: title:, author: and any foreword
+    ├── 01-arrival.md           a chapter: a number, a hyphen, a lowercase name (a-z, 0-9, - and _)
+    └── 02-the-storm.md         each starts on a new page; its first heading (# The Storm) is its title
+```
+
+- Number every chapter differently. Pad with zeros (`01-`, `02-`) so they also sort in order as files.
+- Start every chapter with a `#` heading: it is the chapter's title on the book's chapter list.
+- With no `text.md`, put `title:` and `author:` in the first chapter's front matter.
+- No other files in a lore book's language folder: they are never shown.
+
 ### Also, for both
 
 - **Server entry:** `data/<ns>/gottschbooks/book/<book>.json`. It's needed to give the book on first join, or to
@@ -122,7 +137,8 @@ assets/<ns>/books/<book>/
 - **Other languages:** each language is a folder next to `en_us` (`es_es`, `de_de`, `ko_kr` ...). Each file falls
   back to `en_us` on its own, so a translation may cover only some files.
 - **When translating:** keep every file name, id, entry id, anchor, category id and front matter key exactly as in
-  `en_us`. Translate only the human text: titles, prose, captions and link text.
+  `en_us`. Translate only the human text: titles, prose, captions and link text. A lore book's chapter files keep
+  their `en_us` names too (`ko_kr/02-the-storm.md`); a chapter left untranslated shows in English, in its place.
 
 ---
 
@@ -141,8 +157,8 @@ A file may start with `key: value` lines between two `---` lines.
 | `lookup` | book.md | leave it out (the manual answers item lookups while the player carries it). `always` only if the person says their manual is opened by a plain item or a command; `never` to turn lookups off |
 | `skin` | book.md | only if the person has custom book textures: a folder such as `mymod:textures/gui/my_book` holding `cover.png`, `page.png`, `ornament.png` |
 | `pages` | book.md, entries | `single` (one wide page) or `spread` (two pages, the default): the [page style](#page-styles) the text starts in. A lore book takes it from book.md only |
-| `title` | _index.md, categories, entries, text.md | the title |
-| `author` | text.md | the lore book's author, shown as "by ..." |
+| `title` | _index.md, categories, entries, text.md | the title. A lore book in chapters with no text.md: in the first chapter |
+| `author` | text.md | the lore book's author, shown as "by ..." (with no text.md: in the first chapter) |
 | `icon` | categories, entries | the item shown beside it on the contents and on the entry's title: give every category and entry one |
 | `sort` | categories, entries | a whole number; lower comes first. Use 10, 20, 30 ... so the person can insert things later |
 | `category` | entries | the id of a category file (`basics` for `categories/basics.md`). Every entry needs one that exists |
@@ -197,7 +213,8 @@ Rules for inline text:
 - Prefer dark colours: `dark_red`, `dark_green`, `dark_aqua`, `dark_purple`, `gold`, `dark_blue`. The page is
   parchment, so `yellow`, `white` and `aqua` are hard to read.
 - Use colour sparingly, for key terms and values.
-- `entry:` links work only in manuals, never in lore books.
+- `entry:` links lead between a manual's entries. In a lore book they lead only to its chapters:
+  `[the storm](entry:02-the-storm)`, or `entry:02-the-storm#anchor` for a heading in one.
 - Escape a line that would otherwise start a block: `\# not a heading`, `\- not a list`, `\> not a note`.
 - Escape `*`, `{` or `|` that should show as themselves.
 
@@ -351,11 +368,14 @@ new BookItem(new Item.Properties(), new ResourceLocation("mymod", "guide"))     
 
 - **Files:** one `en_us/text.md` with `title:` and `author:`, plus a server entry with `{}` (so reading it can count
   toward advancements) or `{"give_on_first_join": true}`.
+- **Chapters:** for a long book (more than ten or so pages of text), split it into chapter files (`01-arrival.md`,
+  see [Section 3](#a-lore-book)), each opening with a `#` heading. Keep `title:` and `author:` in `text.md`.
 - **Voice:** write in the voice the person asks for: a diary, a chronicle, a letter.
 - **Sections:** separate them with `---` ornaments. A section is a scene or a day.
 - **Pictures:** use an illustration (`![caption](item:ns:id)`) at a moment that matters, not on every page.
 - **Notes:** use `>` for an editor's note or a later hand writing in the margin.
-- **No links:** lore books have no `entry:` links.
+- **Links:** only to chapters (`entry:02-the-storm`), and only when a reader would want to jump back; most lore
+  books need none.
 
 ## 9. Check your work before you answer
 
@@ -418,6 +438,7 @@ Use a feature only if the person's Gottsch Books version has it:
 | tables, `{page}`, `{page:single}`, `{page:spread}`, `pages:`, recipe layouts for furnaces, stonecutters and smithing, `/gottschbooks check` | 1.2.0 |
 | `items:`, `lookup:` (item lookup) | 1.3.0 |
 | `lookup_from:`, NBT in `items:` | 1.3.0 |
+| lore book chapters (`01-name.md`), links to chapters | 1.3.0 |
 | `announce_on_first_join` | 1.3.0 |
 
 Before 1.2.0, a page break is written `<!-- page -->` (1.2.0 and later read it too).

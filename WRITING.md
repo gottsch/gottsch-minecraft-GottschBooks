@@ -8,6 +8,7 @@ commands and loot tables, and the build setup), both forms are shown.
 - [Two kinds of book](#two-kinds-of-book)
 - [No code needed](#no-code-needed)
 - [Quick start: a lore book](#quick-start-a-lore-book)
+- [Chapters](#chapters)
 - [Quick start: a manual](#quick-start-a-manual)
 - [Files and languages](#files-and-languages)
 - [Front matter](#front-matter)
@@ -28,9 +29,9 @@ page written for an AI, with the rules that keep it from inventing ids or using 
 
 | | Lore book | Manual |
 |---|---|---|
-| Text | one file, read front to back | many entries, in categories |
+| Text | one file (or a file per chapter), read front to back | many entries, in categories |
 | Opens on | a title page: icon, title, author | the contents: landing text, then each category's entries |
-| Getting around | turning pages, bookmarks | clicking entries, links, Back, Contents, Search, bookmarks |
+| Getting around | turning pages, bookmarks; with chapters, the chapter list, links, Back, Contents | clicking entries, links, Back, Contents, Search, bookmarks |
 | Extras | illustrations, spotlights, recipes, images, mobs | the same, plus entries locked behind advancements |
 
 Both flow their text onto as many pages as the window needs, one or two pages at a time, so no text runs off a page
@@ -92,6 +93,47 @@ public static final DeferredItem<Item> DIARY = ITEMS.register("old_diary",
 
 Right-click it and the book opens. One item can also stand for many books: register a plain
 `new BookItem(properties)` and give each stack its book with `Books.of(item, bookId)`.
+
+## Chapters
+
+A long lore book can be written as a file per chapter instead of one `text.md`. Name each chapter file with a
+number, a hyphen, then a name, in the language folder beside (or instead of) `text.md`:
+
+```
+assets/mymod/books/tidewalkers_log/
+├── book.md
+└── en_us/
+    ├── text.md               optional: the title, author and any foreword
+    ├── 01-arrival.md
+    ├── 02-the-storm.md
+    └── 03-the-wreck.md
+```
+
+- **The name:** digits, `-`, then lowercase letters, digits, `-` or `_` (`01-arrival.md`, `2-the_storm.md`). Chapters
+  are read in the order of their numbers, so `2-` comes before `10-` whether or not you pad with zeros; padding
+  (`01-`, `02-`) keeps them in order in your file browser too. Give each chapter its own number: two with the same one
+  are read in name order, and the [check](#checking-a-book) points it out. Any other file in a lore book's language
+  folder (`arrival.md`, `chapters/01-arrival.md`) is never shown, and the check says so.
+- **The order:** `text.md` first, if there is one, then the chapters. Each chapter starts on a new page, in the book's
+  [page style](#page-styles) (`pages:` in book.md).
+- **The title page:** the front matter (`title:`, `author:`) is `text.md`'s, or, in a book without one, the first
+  chapter's. With two or more chapters, the title page lists them under *Contents*; a click on one turns to it, and
+  **Contents** above the book comes back to the list.
+- **Each chapter's title** is its first heading (`# The Storm`). That heading keeps its own `{#anchor}`, or gets the
+  chapter's file name as one, so links can jump to it. A chapter with no heading gets one made from its file name
+  (`02-the-storm` reads "The storm"); the check points that out too.
+- **Links between chapters:** `[the storm](entry:02-the-storm)` jumps to that chapter, and
+  `[the wreck](entry:02-the-storm#wreck)` to a heading in it; `entry:text#anchor` reaches a heading in `text.md`.
+  **Back** (or Backspace) returns to where you were.
+- **Bookmarks** work as in any book, across chapters.
+
+A book of `text.md` alone reads exactly as it always has.
+
+**Translating a book in chapters:** give each translated chapter the same file name as the `en_us` one
+(`ko_kr/02-the-storm.md`, not `ko_kr/02-pokpung.md`); file names are never shown, the heading is. As with every file,
+each chapter falls back to `en_us` on its own, so a translation that has only some chapters reads the rest in English,
+each in its place in the order. A translated chapter with a name `en_us` doesn't have would be a chapter of its own in
+every language (English readers would see it too), so the check points it out.
 
 ## Quick start: a manual
 
@@ -158,13 +200,16 @@ Everything lives under `assets/<namespace>/books/<book>/`. The book's id is `<na
 | File | Used by | Holds |
 |---|---|---|
 | `book.md` | both (optional for lore books) | `mode`, `icon`, `skin`: things that don't change with the language |
-| `<locale>/text.md` | lore book | the whole text |
+| `<locale>/text.md` | lore book | the whole text, or with [chapters](#chapters) the title, author and any foreword |
+| `<locale>/NN-<name>.md` | lore book | one [chapter](#chapters) (`01-arrival.md`), read in the order of the numbers |
 | `<locale>/_index.md` | manual | the manual's title and landing text |
 | `<locale>/categories/<id>.md` | manual | one category |
 | `<locale>/<entry>.md` | manual | one entry; `<entry>` may include folders (`items/widget.md` is entry `items/widget`) |
 
 `<locale>` is the game's language code: `en_us`, `es_es`, `ko_kr`, and so on. **Each file falls back to `en_us`
-on its own**, so a translation can cover only some files and the rest show in English.
+on its own**, so a translation can cover only some files and the rest show in English. That goes for a lore book's
+chapters too: a translation with fewer chapters reads the missing ones in English, in their place. Keep each
+translated file's name the same as the `en_us` one, chapters included (see [Chapters](#chapters)).
 
 Resource packs can replace or add any of these files, as with any other asset.
 
@@ -182,8 +227,8 @@ ignored.
 | `lookup_from` | book.md, entries | what an entry answers [item lookups](#item-lookup) for: `all` it shows (the default), only its `items`, or `none`. An entry's setting wins over book.md's |
 | `skin` | book.md | a texture folder (`mymod:textures/gui/my_book`) holding `cover.png`, `page.png` and `ornament.png`; see [Skins](#skins) |
 | `pages` | book.md, entries | the [page style](#page-styles) the text starts in: `single` for one wide page, `spread` (the default) for two side by side. An entry's setting wins over book.md's |
-| `title` | text.md, _index.md, categories, entries | the title. For a lore book, a leading `# Heading` works too |
-| `author` | text.md | shown under the title as "by ..." |
+| `title` | text.md, _index.md, categories, entries | the title. For a lore book, a leading `# Heading` in text.md works too; a lore book in chapters with no text.md takes its first chapter's `title:` |
+| `author` | text.md | shown under the title as "by ..." (a lore book in chapters with no text.md: its first chapter's) |
 | `icon` | categories, entries | the item shown next to it on the contents and on the entry's title |
 | `sort` | categories, entries | a number; lower comes first. Ties, and anything without one, sort by title |
 | `category` | entries | a category id (the file name under `categories/`). Entries without a known category are listed last |
@@ -267,6 +312,8 @@ Back to two pages.
 - `{page}` only starts a new page; `{page:single}` and `{page:spread}` start one and switch the style. Each goes on a
   line of its own; anywhere else it is shown as text.
 - The text starts in the style from `pages:` in the entry's front matter, else book.md's, else `spread`.
+- Each of a lore book's [chapters](#chapters) starts in book.md's style again, whatever the chapter before it
+  switched to.
 - After a switch, pages pair up afresh, so a spread page never faces a single one. A spread with one page left
   shows a blank page beside it, as at the end of a book.
 - In a window too narrow for two pages, every page is shown one at a time, and a single page is no wider.
@@ -389,6 +436,8 @@ Read more [on the wiki](https://example.com/wiki).
 ```
 
 - `entry:<entry>` opens another entry of the same manual. `#anchor` jumps to the heading with `{#anchor}`.
+- In a lore book in [chapters](#chapters), `entry:<chapter>` (`entry:02-the-storm`) turns to that chapter, and
+  `entry:<chapter>#anchor` or `entry:text#anchor` to a heading. A lore book has no other entries to link to.
 - `https://` links ask the player before opening the browser (and follow the game's Chat Links setting).
 - Links are underlined and blue. **Back** (or Backspace) returns to where you were, and **Contents** goes to the
   contents page.
@@ -652,8 +701,8 @@ It finds:
 
 - items, pictures, recipes, images and mobs that don't exist, and components that don't parse
 - recipes with nothing to draw (their ingredients are worked out in code)
-- `entry:` links to entries that aren't there, or to a `{#anchor}` the entry doesn't have, and entry links in a lore
-  book
+- `entry:` links to entries that aren't there, or to a `{#anchor}` the entry doesn't have, and a lore book's links
+  to anything but its chapters and `text.md`
 - fonts that aren't there
 - entries whose `category` has no `categories/<id>.md`
 - `items:` values that aren't items or item tags, a `lookup` other than `carried`, `always` or `never`, a
@@ -663,7 +712,10 @@ It finds:
 - fenced blocks the reader doesn't know (` ```chart `), which show as plain lines
 - table rows with too few or too many cells, icons after a cell's text, and empty tables
 - a `pages` value, or a `{page:...}` style, other than `single` or `spread`
-- a manual with no `_index.md`, a lore book with no `text.md`, and a `skin` missing any of its three textures
+- a manual with no `_index.md`, a lore book with no `text.md` and no chapters, and a `skin` missing any of its three
+  textures
+- a lore book's files that aren't `text.md` or a [chapter](#chapters), chapters sharing a number, chapters with no
+  heading, a translated chapter whose name `en_us` doesn't have, and a book in chapters with no `title:`
 
 It checks every language a book has. The first 10 problems are shown in chat; click a file to copy its path. Every
 problem goes to the log and to a report, `logs/gottschbooks-check.txt` in the game folder, grouped by file.
@@ -694,10 +746,11 @@ On NeoForge 1.21.1 the class is `mod.gottsch.neo.gottschbooks.core.lint.BookLint
 are any.
 
 It finds what the files alone show: unknown `pages`, `lookup` and `lookup_from` values and `lookup_from: items`
-without `items:`; `entry:` links to entries or anchors that aren't there, and entry links in a lore book; entries
-whose `category` has no `categories/<id>.md`; unknown fenced blocks; table rows with the wrong number of cells,
-icons after a cell's text and empty tables; `{page:...}` styles; a manual with no `_index.md` or a lore book with no
-`text.md`; item references, tags and ids that aren't written right; and file names the game won't load (capitals,
+without `items:`; `entry:` links to entries, chapters or anchors that aren't there; entries whose `category` has no
+`categories/<id>.md`; unknown fenced blocks; table rows with the wrong number of cells, icons after a cell's text and
+empty tables; `{page:...}` styles; a manual with no `_index.md` or a lore book with no `text.md` and no chapters; a
+lore book's chapter problems (bad file names, shared numbers, no heading, names `en_us` lacks, no title); item
+references, tags and ids that aren't written right; and file names the game won't load (capitals,
 spaces). Whether an item, recipe, image, mob, font or skin texture exists, and whether NBT parses, needs the game:
 run `/gottschbooks check` for those.
 
@@ -740,7 +793,9 @@ It takes four arguments:
   its entries in contents order (entries in no category, or in one that doesn't exist, come last under *Other
   entries*). Then one page per entry, named after its id; an entry in a folder, `machines/smelter`, becomes
   `machines--smelter`, so every page sits in one folder.
-- **A lore book:** one page with its title, author and text.
+- **A lore book:** one page with its title, author and text. A book in [chapters](#chapters) is still one page:
+  the chapters follow `text.md` in order, after a numbered list of them (with two or more) that links to each
+  chapter's heading, and links between chapters lead down the page.
 - **`html`:** standalone pages, `index.html` and `<entry>.html`, each with a small parchment style sheet of its own.
   Open `index.html` in a browser, or put the folder on GitHub Pages or any web host.
 - **`markdown`:** GitHub-wiki-flavoured Markdown, `Home.md` (a wiki's front page) and `<entry>.md`, linked to each
