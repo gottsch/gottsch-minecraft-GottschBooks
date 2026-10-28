@@ -19,6 +19,7 @@ commands and loot tables, and the build setup), both forms are shown.
 - [Depending on Gottsch Books](#depending-on-gottsch-books)
 - [Tips and gotchas](#tips-and-gotchas)
 - [Checking a book](#checking-a-book)
+- [Exporting a book](#exporting-a-book)
 
 Writing a book with an AI? Give it [AI-INSTRUCTIONS.md](AI-INSTRUCTIONS.md) along with your docs: a version of this
 page written for an AI, with the rules that keep it from inventing ids or using Markdown the reader doesn't know.
@@ -670,34 +671,3 @@ It checks every language a book has. The first 10 problems are shown in chat; cl
 problem goes to the log and to a report, `logs/gottschbooks-check.txt` in the game folder, grouped by file.
 **[Open report]** after the summary opens it in your text editor, and **[Copy]** copies the whole report, ready
 to paste into an AI chat or an issue. Each check replaces the report.
-
-### In your build
-
-The checks that need no game also run in your Gradle build or CI, so a broken link or a bad table fails the build
-instead of waiting for someone to open the book. The checker ships in the Gottsch Books jar; give it one or more
-resource roots (folders holding `assets/`, a later one replacing an earlier one's files as a resource pack does):
-
-```groovy
-// gradlew checkBooks (and gradlew check, or build) checks every book under src/main/resources
-tasks.register('checkBooks', JavaExec) {
-    group = 'verification'
-    description = 'Checks the Gottsch Books books for mistakes the parser can see'
-    // holds the Gottsch Books jar (implementation or compileOnly) and the Minecraft classes its parser uses
-    classpath = sourceSets.main.compileClasspath
-    mainClass = 'mod.gottsch.neo.gottschbooks.core.lint.BookLint'
-    args file('src/main/resources').absolutePath
-}
-tasks.named('check') { dependsOn 'checkBooks' }
-```
-
-On Forge 1.20.1 the class is `mod.gottsch.forge.gottschbooks.core.lint.BookLint`. It prints each problem as
-`file: message`, as the in-game check logs them, then how many it found, and fails the task (exit code 1) if there
-are any.
-
-It finds what the files alone show: unknown `pages`, `lookup` and `lookup_from` values and `lookup_from: items`
-without `items:`; `entry:` links to entries or anchors that aren't there, and entry links in a lore book; entries
-whose `category` has no `categories/<id>.md`; unknown fenced blocks; table rows with the wrong number of cells,
-icons after a cell's text and empty tables; `{page:...}` styles; a manual with no `_index.md` or a lore book with no
-`text.md`; item references, tags and ids that aren't written right; and file names the game won't load (capitals,
-spaces). Whether an item, recipe, image, mob, font or skin texture exists needs the game: run
-`/gottschbooks check` for those.
