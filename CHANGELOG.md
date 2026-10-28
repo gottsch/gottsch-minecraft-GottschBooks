@@ -55,6 +55,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `serverconfig/gottschbooks-server.toml` turns announcements off for a world; giving is never affected.
 - `/gottschbooks get <book>`: any player takes a book whose entry gives or announces it on first join, unless they
   already carry it. `/gottschbooks open` is still for operators only.
+- **Lecterns:** any Gottsch Books book (`gottschbooks:book` or a mod's own `BookItem`) goes on a vanilla lectern, and
+  right-clicking the lectern opens it in the reader for that player, instead of vanilla's lectern screen. Reading it
+  there counts for `gottschbooks:book_read`. Sneaking with both hands empty takes the book off; breaking the lectern
+  drops it. A comparator reads a steady signal while the book is on the lectern, since the server doesn't know the
+  page.
 
 #### Configs
 - A client config, `config/gottschbooks-client.toml`: `lookupHint = false` hides the item lookup line for players who
