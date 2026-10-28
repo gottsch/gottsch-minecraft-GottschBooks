@@ -56,6 +56,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `lookup_from: items` without `items:`, and a vanilla icon that answers lookups in a mod's manual when the entry
   shows that item nowhere else.
 
+#### Exporting books
+- An exporter turns a manual or lore book into static web pages, so the same text can be published as a wiki (a
+  GitHub wiki or GitHub Pages) or as mod-page content without writing it twice. A manual gets an index page (title,
+  landing text, each category with its entries) and a page per entry; a lore book gets one page.
+- Run it with `./gradlew exportBook -Pbook=<book folder> -Plocale=en_us -Pout=<folder> -Pformat=html|markdown`, or
+  from your own build with `mod.gottsch.neo.gottschbooks.export.BookExport` and the same four arguments. It reads the
+  book's files directly and needs no game running.
+- Two formats: standalone HTML pages (`index.html`, `<entry>.html`), keeping headings with their `{#anchor}` ids,
+  notes, lists, ornaments, tables with their alignment, and colours, bold and italic as inline styles; or
+  GitHub-wiki-flavoured Markdown (`Home.md`, `<entry>.md`) with bold and italic, whose anchor links use the ids GitHub
+  gives headings. In both, `entry:` links become relative links between the pages and `{font:...}` runs are plain
+  text.
+- Spotlights, recipes, images, mobs, illustrations and table icons become labelled placeholders showing their id,
+  with their text kept. Locked entries are exported, marked as locked with the advancement that unlocks them.
+
 #### For mod developers
 - `GottschBooksClient.open(book, entry, stack)`: opens an entry on the page that shows a stack (a spotlight of that
   very kind first).
@@ -64,6 +79,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Docs and examples
 - WRITING.md has sections on search, new entries, bookmarks, item lookup and skins (giving a book its own cover,
   page and ornament).
+- WRITING.md has a section on exporting a book as web pages: running the exporter, the two formats, and what
+  carries over or becomes a placeholder.
 - The example journal has a sea-blue skin; the field guide is announced rather than given, and shows `lookup_from`
   and an item lookup for one kind of potion.
 

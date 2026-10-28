@@ -19,6 +19,7 @@ commands and loot tables, and the build setup), both forms are shown.
 - [Depending on Gottsch Books](#depending-on-gottsch-books)
 - [Tips and gotchas](#tips-and-gotchas)
 - [Checking a book](#checking-a-book)
+- [Exporting a book](#exporting-a-book)
 
 Writing a book with an AI? Give it [AI-INSTRUCTIONS.md](AI-INSTRUCTIONS.md) along with your docs: a version of this
 page written for an AI, with the rules that keep it from inventing ids or using Markdown the reader doesn't know.
@@ -670,3 +671,72 @@ It checks every language a book has. The first 10 problems are shown in chat; cl
 problem goes to the log and to a report, `logs/gottschbooks-check.txt` in the game folder, grouped by file.
 **[Open report]** after the summary opens it in your text editor, and **[Copy]** copies the whole report, ready
 to paste into an AI chat or an issue. Each check replaces the report.
+
+## Exporting a book
+
+The exporter turns a manual or lore book into static web pages, so the text you wrote for the game can also be your
+mod's wiki (a GitHub wiki or a GitHub Pages site) or mod-page content, without writing it twice. It reads the book's
+files directly, with the same parser the game uses, and needs no game running.
+
+In this repository, `exportBook` runs it:
+
+```
+./gradlew exportBook -Pbook=src/main/resources/assets/mymod/books/guide -Plocale=en_us -Pout=build/wiki -Pformat=markdown
+```
+
+With no `-Pbook` it exports the example field guide into `build/book-export`. In your own mod, with Gottsch Books on
+your runtime classpath (as it is when you [depend on it](#depending-on-gottsch-books)), add the same task to your
+build.gradle:
+
+```groovy
+tasks.register('exportBook', JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'mod.gottsch.neo.gottschbooks.export.BookExport'     // Forge 1.20.1: mod.gottsch.forge.gottschbooks.export.BookExport
+    args 'src/main/resources/assets/mymod/books/guide', 'en_us', 'build/wiki', 'markdown'
+}
+```
+
+It takes four arguments:
+
+| Argument | |
+|---|---|
+| book folder | the folder holding `book.md` and the language folders: `assets/<ns>/books/<book>` |
+| locale | the language to export, such as `en_us`. As in game, each file falls back to `en_us` on its own |
+| output folder | where the pages go; made if missing. Pages already there with the same names are replaced |
+| format | `html` (the default) or `markdown` |
+
+**What you get:**
+
+- **A manual:** an index page with the manual's title, its landing text, then each category with its description and
+  its entries in contents order (entries in no category, or in one that doesn't exist, come last under *Other
+  entries*). Then one page per entry, named after its id; an entry in a folder, `machines/smelter`, becomes
+  `machines--smelter`, so every page sits in one folder.
+- **A lore book:** one page with its title, author and text.
+- **`html`:** standalone pages, `index.html` and `<entry>.html`, each with a small parchment style sheet of its own.
+  Open `index.html` in a browser, or put the folder on GitHub Pages or any web host.
+- **`markdown`:** GitHub-wiki-flavoured Markdown, `Home.md` (a wiki's front page) and `<entry>.md`, linked to each
+  other the way wiki pages are, without `.md`. Copy the files into your wiki's repository
+  (`git clone https://github.com/<you>/<mod>.wiki.git`) and push. A single entry's page also pastes into a mod page's
+  description on CurseForge or Modrinth, though its links to other entries won't lead anywhere there.
+
+**What carries over:**
+
+- headings, with their `{#anchor}` (in HTML as the heading's `id`; in Markdown, links to it use the id GitHub gives
+  the heading from its text)
+- paragraphs, line breaks, `>` notes, lists and `---` ornaments
+- tables, with each column's alignment. A table with no header has none in HTML; in Markdown it gets an empty header
+  row, since GitHub needs one
+- colours, bold and italic, as inline styles. GitHub drops inline styles, so Markdown keeps bold and italic only
+- `{font:...}` runs, as plain text (with no colour, since a font's pictures are often white)
+- `entry:` links, as relative links between the pages; `https://` links as they are. A link to an entry that doesn't
+  exist, and any `entry:` link in a lore book, is plain text
+
+**What can't be drawn** without the game becomes a labelled placeholder that shows its id, with its text kept under
+it: spotlights (*Item*), recipes (*Recipe*), images (*Image*), mobs (*Mob*) and illustrations (*Picture*). Icons in
+table cells show as their ids. Fenced blocks of a kind the reader doesn't know show their lines as plain text, as in
+game.
+
+**Locked entries** are exported too: the contents marks them *(locked)*, and their page starts with a note naming the
+advancement that unlocks them in game. Delete their pages and contents lines if they should stay a surprise.
+
+Page breaks and page styles (`{page}`, `{page:single}`, `pages:`) are left out: a web page is one long page.

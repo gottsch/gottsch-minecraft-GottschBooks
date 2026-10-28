@@ -70,6 +70,11 @@ how-to. `./gradlew aiKit` builds it (it is also built with the jar, into `build/
 The AI lists every place it needed an id it didn't have, rather than making one up. In Claude Code the instructions
 also work as a skill: save the file as `.claude/skills/gottschbooks-author/SKILL.md`.
 
+## Publishing a book on the web
+
+`./gradlew exportBook` turns a manual or lore book into static web pages, as HTML or as GitHub wiki Markdown, so the
+same text can be your mod's wiki or mod-page content. See [Exporting a book](WRITING.md#exporting-a-book).
+
 ## Using it from another mod
 
 **Books that are part of the game** (nest it, require it):
