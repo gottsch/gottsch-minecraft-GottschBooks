@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   results), and the contents counts them with a **Mark all read** link. Kept per player in `gottschbooks/reading.json`.
 - The item lookup's tooltip line goes away for an item once its entry has been opened (`lookupHintUntilRead`, on by
   default); the key still works.
+- WRITING.md has a Skins section on giving a book its own cover, page and ornament; the example journal has a
+  sea-blue skin.
 - A client config, `config/gottschbooks-client.toml`, whose `lookupHint = false` hides the tooltip line for players
   who know their mods; the key keeps working. `/gottschbooks lookup hint on|off` sets it from chat.
 - `"announce_on_first_join": true` in a book's server entry: instead of giving the book, each player is told about it
