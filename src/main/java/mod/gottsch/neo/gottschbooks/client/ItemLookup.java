@@ -152,7 +152,7 @@ public final class ItemLookup {
     }
 
     /** book.md's {@code lookup:} value, {@code carried} when it has none */
-    private static String lookup(ResourceLocation book) {
+    static String lookup(ResourceLocation book) {
         return BookLoader.get(book).flatMap(b -> b.meta().get(LOOKUP))
                 .map(value -> value.strip().toLowerCase(Locale.ROOT)).orElse(CARRIED);
     }

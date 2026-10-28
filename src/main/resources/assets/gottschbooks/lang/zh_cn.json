@@ -33,6 +33,9 @@
   "gottschbooks.command.get.unavailable": "%s 无法通过这种方式获取",
   "gottschbooks.recipe.time": "%s秒",
   "gottschbooks.lookup.hint": "[%s] %s",
+  "gottschbooks.unlock.toast.title": "%s有新条目",
+  "gottschbooks.unlock.toast.entries": "%s个新条目",
+  "gottschbooks.unlock.toast.open": "按%s阅读",
   "key.gottschbooks.lookup": "在手册中查找物品",
   "key.categories.gottschbooks": "Gottsch Books",
   "item.gottschbooks.book": "书"

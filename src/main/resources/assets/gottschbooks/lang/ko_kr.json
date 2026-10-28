@@ -33,6 +33,9 @@
   "gottschbooks.command.get.unavailable": "%s은(는) 이 방법으로 받을 수 없는 책입니다",
   "gottschbooks.recipe.time": "%s초",
   "gottschbooks.lookup.hint": "[%s] %s",
+  "gottschbooks.unlock.toast.title": "%s에 새 항목",
+  "gottschbooks.unlock.toast.entries": "새 항목 %s개",
+  "gottschbooks.unlock.toast.open": "%s 키를 눌러 읽기",
   "key.gottschbooks.lookup": "설명서에서 아이템 찾기",
   "key.categories.gottschbooks": "Gottsch Books",
   "item.gottschbooks.book": "책"
