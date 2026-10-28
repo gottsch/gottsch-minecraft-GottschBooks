@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - Unreleased
+
+### Added
+- Item lookup: hovering over an item in any inventory adds a tooltip line naming the manual that explains it, and
+  the **Look Up Item in a Manual** key (B by default) opens the manual at that entry, on the page that shows the item.
+  Closing the book returns to the inventory. Works while the player carries the manual; locked entries never answer.
+  The line shows the key as bound, never wraps, and is left out while SHIFT is held, to keep long tooltips short.
+- An entry explains an item when it spotlights it, has a recipe that makes it, has it as its `icon`, or lists it in
+  the new `items:` front matter (item ids and `#tags`), in that order of preference.
+- `lookup:` in book.md: `always` answers lookups without the manual in the inventory, `never` turns them off.
+- `GottschBooksClient.open(book, entry, item)`: opens an entry on the page that shows an item.
+- `/gottschbooks check` reports `items:` values that aren't items or tags, and unknown `lookup:` values.
+
 ## [1.2.0] - Unreleased
 
 ### Added

@@ -14,7 +14,7 @@ Follow this document exactly. Gottsch Books is **not** general Markdown: syntax 
 as plain text, so ordinary Markdown habits (backticks, HTML, nested lists, `[text](#anchor)` links) produce visible
 junk in game. Where these instructions and your Markdown habits disagree, these instructions win.
 
-These instructions describe Gottsch Books **1.2.0**. The table in [Features by version](#features-by-version) lists
+These instructions describe Gottsch Books **1.3.0**. The table in [Features by version](#features-by-version) lists
 what older versions lack.
 
 ---
@@ -87,7 +87,7 @@ Everything for one book lives under `assets/<namespace>/books/<book>/`. The book
 
 ```
 assets/<ns>/books/<book>/
-├── book.md                     mode: manual (required), icon, skin, pages
+├── book.md                     mode: manual (required), icon, skin, pages, lookup
 └── en_us/
     ├── _index.md               the manual's title and its landing text (shown above the contents)
     ├── categories/
@@ -138,6 +138,7 @@ A file may start with `key: value` lines between two `---` lines.
 |---|---|---|
 | `mode` | book.md | `manual` for a manual. Leave it out for a lore book |
 | `icon` | book.md | the manual's icon on its contents page: an item |
+| `lookup` | book.md | leave it out (the manual answers item lookups while the player carries it). `always` only if the person says their manual is opened by a plain item or a command; `never` to turn lookups off |
 | `skin` | book.md | only if the person has custom book textures: a folder such as `mymod:textures/gui/my_book` holding `cover.png`, `page.png`, `ornament.png` |
 | `pages` | book.md, entries | `single` (one wide page) or `spread` (two pages, the default): the [page style](#page-styles) the text starts in. A lore book takes it from book.md only |
 | `title` | _index.md, categories, entries, text.md | the title |
@@ -146,8 +147,14 @@ A file may start with `key: value` lines between two `---` lines.
 | `sort` | categories, entries | a whole number; lower comes first. Use 10, 20, 30 ... so the person can insert things later |
 | `category` | entries | the id of a category file (`basics` for `categories/basics.md`). Every entry needs one that exists |
 | `advancement` | entries | an advancement id; the entry stays hidden until the player has it. Only with a real id |
+| `items` | entries | the items the entry explains in plain text, beyond its spotlights, recipes and icon: item ids and `#ns:tag` item tags, separated by commas, in double quotes: `items: "mymod:wrench, #mymod:wrenches"`. Only real ids |
 
 An entry's title comes from `title:`. Don't also start the entry with a `# Title` heading.
+
+**Item lookup.** A player hovering over an item in their inventory can press a key to open the entry that explains
+it. An entry explains an item when it has a `spotlight` of it, a `recipe` that makes it, the item as its `icon`, or
+the item in `items:`. So every important item should have one entry that spotlights it; use `items:` for items an
+entry covers only in its text (the tiers of a tool, say).
 
 ---
 
@@ -405,5 +412,6 @@ Use a feature only if the person's Gottsch Books version has it:
 | item data on items (components or NBT) | 1.1.0 |
 | `{font:...}` | 1.1.0 |
 | tables, `{page}`, `{page:single}`, `{page:spread}`, `pages:`, recipe layouts for furnaces, stonecutters and smithing, `/gottschbooks check` | 1.2.0 |
+| `items:`, `lookup:` (item lookup) | 1.3.0 |
 
 Before 1.2.0, a page break is written `<!-- page -->` (1.2.0 and later read it too).

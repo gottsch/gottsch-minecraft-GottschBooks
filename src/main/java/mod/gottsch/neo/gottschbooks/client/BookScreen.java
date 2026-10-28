@@ -36,6 +36,7 @@ import net.minecraft.sounds.SoundEvents;
 import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import org.lwjgl.glfw.GLFW;
 
@@ -118,6 +119,12 @@ public class BookScreen extends Screen {
     /** an anchor to open at, once the layout exists */
     @Nullable
     private String pendingAnchor;
+    /** an item whose page to open at, once the layout exists */
+    @Nullable
+    private Item pendingItem;
+    /** the screen to go back to on closing; null to close to the game */
+    @Nullable
+    private Screen parent;
 
     // layout, recomputed in init() (it runs again when the window is resized)
     private int bookX, bookY, bookW, bookH;
@@ -247,6 +254,12 @@ public class BookScreen extends Screen {
         }
     }
 
+    /** opens at the page showing {@code item} (see {@link #pageOfItem}), and closes back to {@code parent} */
+    public void showing(Item item, @Nullable Screen parent) {
+        this.pendingItem = item;
+        this.parent = parent;
+    }
+
     /** {@code title:} in the front matter, else a leading {@code # heading}, else the book's id */
     private static Component loreTitle(LoadedBook book, BookText text) {
         Optional<Component> title = text.get("title").map(Component::literal);
@@ -306,6 +319,9 @@ public class BookScreen extends Screen {
         if (pendingAnchor != null) {
             view = viewOf(pageOfAnchor(pendingAnchor));
             pendingAnchor = null;
+        } else if (pendingItem != null) {
+            view = viewOf(pageOfItem(pendingItem));
+            pendingItem = null;
         } else {
             view = Math.min(viewOf(pageOfSection(anchor)), lastView());
         }
@@ -766,6 +782,21 @@ public class BookScreen extends Screen {
         return 0;
     }
 
+    /** the first page with a spotlight of {@code item}, else with a recipe that makes it, else the first page */
+    private int pageOfItem(Item item) {
+        for (Kind kind : List.of(Kind.SPOTLIGHT, Kind.RECIPE)) {
+            for (int p = 0; p < pages.size(); p++) {
+                for (Line line : pages.get(p).lines()) {
+                    ItemStack shown = line.kind != kind ? ItemStack.EMPTY : kind == Kind.SPOTLIGHT ? line.item : line.recipe.result();
+                    if (shown.is(item)) {
+                        return p;
+                    }
+                }
+            }
+        }
+        return 0;
+    }
+
     private int currentSection() {
         int first = view < views.size() ? views.get(view).first() : 0;
         if (first >= pages.size()) {
@@ -900,6 +931,15 @@ public class BookScreen extends Screen {
             return true;
         }
         return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+    }
+
+    @Override
+    public void onClose() {
+        if (parent != null) {
+            minecraft.setScreen(parent);
+        } else {
+            super.onClose();
+        }
     }
 
     @Override

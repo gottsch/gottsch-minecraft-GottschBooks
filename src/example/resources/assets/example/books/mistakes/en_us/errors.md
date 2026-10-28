@@ -3,6 +3,7 @@ title: Errors
 category: nowhere
 icon: minecraft:not_an_item
 pages: wide
+items: minecraft:not_an_item, #minecraft:not_a_tag
 ---
 
 ![A potion that doesn't exist](item:minecraft:potion[potion_contents={potion:"minecraft:nope"}])

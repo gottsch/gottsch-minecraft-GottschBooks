@@ -9,5 +9,8 @@
   "gottschbooks.command.check.more": "...y %s más, todos en el registro",
   "gottschbooks.command.check.missing": "No existe el libro %s",
   "gottschbooks.recipe.time": "%s s",
+  "gottschbooks.lookup.hint": "[%s] %s",
+  "key.gottschbooks.lookup": "Buscar objeto en un manual",
+  "key.categories.gottschbooks": "Gottsch Books",
   "item.gottschbooks.book": "Libro"
 }
