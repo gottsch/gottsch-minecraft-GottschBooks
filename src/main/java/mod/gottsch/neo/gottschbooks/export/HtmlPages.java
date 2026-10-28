@@ -23,6 +23,7 @@ import mod.gottsch.neo.gottschbooks.core.text.Block;
 import mod.gottsch.neo.gottschbooks.core.text.BookText;
 import mod.gottsch.neo.gottschbooks.core.text.Inline;
 import mod.gottsch.neo.gottschbooks.core.text.ItemReference;
+import mod.gottsch.neo.gottschbooks.core.text.LoreText;
 import net.minecraft.network.chat.Component;
 
 import java.util.List;
@@ -30,8 +31,9 @@ import java.util.Locale;
 
 /**
  * A book as standalone HTML pages, each with its own small style sheet: {@code index.html}, then
- * {@code <entry>.html} for a manual. Headings keep their {@code {#anchor}} as their {@code id}; colours, bold and
- * italic are inline styles; tables keep their alignment.
+ * {@code <entry>.html} for a manual; a lore book is {@code index.html} alone, its chapters listed at the top.
+ * Headings keep their {@code {#anchor}} as their {@code id}; colours, bold and italic are inline styles; tables keep
+ * their alignment.
  *
  * @author Mark Gottschling on 10/28/2026
  */
@@ -133,11 +135,20 @@ final class HtmlPages extends WebPages {
     }
 
     @Override
-    String lore(BookText text) {
+    String lore(LoreText lore) {
+        BookText text = lore.text();
         StringBuilder out = new StringBuilder();
         out.append("<h1>").append(escape(title())).append("</h1>\n");
         text.get("author").ifPresent(author -> out.append("<p class=\"author\">by ").append(inline(Inline.parse(author)))
                 .append("</p>\n"));
+        if (lore.chapters().size() >= 2) {
+            out.append("<nav>\n<ol class=\"contents\">\n");
+            for (LoreText.Chapter chapter : lore.chapters()) {
+                out.append("<li><a href=\"#").append(escape(chapter.anchor())).append("\">")
+                        .append(escape(chapter.title().getString())).append("</a></li>\n");
+            }
+            out.append("</ol>\n</nav>\n");
+        }
         blocks(text.blocks(), out);
         return document(title(), null, out);
     }

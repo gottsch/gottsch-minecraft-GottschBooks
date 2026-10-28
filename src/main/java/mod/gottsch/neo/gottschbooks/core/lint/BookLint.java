@@ -21,6 +21,7 @@ import mod.gottsch.neo.gottschbooks.core.text.Block;
 import mod.gottsch.neo.gottschbooks.core.text.BookText;
 import mod.gottsch.neo.gottschbooks.core.text.Inline;
 import mod.gottsch.neo.gottschbooks.core.text.ItemReference;
+import mod.gottsch.neo.gottschbooks.core.text.LoreText;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.Style;
@@ -45,10 +46,11 @@ import java.util.stream.Collectors;
 /**
  * The part of {@code /gottschbooks check} that needs no game: what the parser alone can see wrong in a book's files,
  * for a mod's build or CI. It finds unknown {@code pages}, {@code lookup} and {@code lookup_from} values,
- * {@code lookup_from: items} without {@code items:}, {@code entry:} links to entries or anchors that aren't there and
- * entry links in lore books, categories with no {@code categories/<id>.md}, fenced blocks the reader doesn't know,
- * table problems, a manual with no {@code _index.md} or a lore book with no {@code text.md}, and item references
- * that don't parse. Whether an item, recipe, image, mob or font exists needs the game, so those are left to the
+ * {@code lookup_from: items} without {@code items:}, {@code entry:} links to entries, chapters or anchors that aren't
+ * there, categories with no {@code categories/<id>.md}, fenced blocks the reader doesn't know, table problems, a
+ * manual with no {@code _index.md}, a lore book with no {@code text.md} and no chapters, a lore book's files that
+ * aren't {@code text.md} or a chapter ({@code 01-name.md}), chapters sharing a number, a translated chapter
+ * {@code en_us} has no file for, and item references that don't parse. Whether an item, recipe, image, mob or font exists needs the game, so those are left to the
  * in-game check. Messages read as the in-game check's do.
  * <p>
  * {@link #main} checks every book under one or more resource roots (folders holding {@code assets/}), prints each
@@ -135,8 +137,8 @@ public final class BookLint {
             if (!book.entries().containsKey(INDEX)) {
                 problem("manual has no " + INDEX + ".md, so its title is its id and it has no landing text");
             }
-        } else if (!book.entries().containsKey(LORE_ENTRY)) {
-            problem("lore book has no " + LORE_ENTRY + ".md; files: " + book.entries().keySet());
+        } else {
+            lore();
         }
 
         Set<String> categories = book.entries().keySet().stream().filter(name -> name.startsWith(CATEGORIES))
@@ -145,6 +147,57 @@ public final class BookLint {
             file = book.folder() + "/" + locale + "/" + entry + ".md";
             entry(entry, locale, text, categories);
         }));
+    }
+
+    /**
+     * a lore book's files: {@code text.md} and chapters ({@link LoreText}), and nothing the reader never shows; each
+     * chapter with a number of its own, a heading, and a name {@code en_us} shares; and a title for a book whose
+     * front matter is its first chapter's
+     */
+    private void lore() {
+        Set<String> names = book.entries().keySet();
+        List<String> chapters = LoreText.chapters(names);
+        if (!names.contains(LORE_ENTRY) && chapters.isEmpty()) {
+            problem("lore book has no " + LORE_ENTRY + ".md and no chapters (01-name.md); files: " + names);
+            return;
+        }
+        String folder = book.folder() + "/";
+        book.entries().forEach((entry, byLocale) -> {
+            if (!entry.equals(LORE_ENTRY) && !LoreText.isChapter(entry)) {
+                byLocale.keySet().forEach(locale -> {
+                    file = folder + locale + "/" + entry + ".md";
+                    problem("isn't " + LORE_ENTRY + ".md or a chapter (a number, a hyphen and a name, such as 01-arrival.md), so the book never shows it");
+                });
+            }
+        });
+        Set<String> english = book.entries().entrySet().stream()
+                .filter(e -> e.getValue().containsKey(LintBook.FALLBACK_LOCALE)).map(Map.Entry::getKey).collect(Collectors.toSet());
+        boolean englishChapters = english.stream().anyMatch(LoreText::isChapter);
+        Map<String, Map<Integer, String>> numbers = new TreeMap<>();
+        for (String chapter : chapters) {
+            book.entries().get(chapter).forEach((locale, text) -> {
+                file = folder + locale + "/" + chapter + ".md";
+                String first = numbers.computeIfAbsent(locale, k -> new TreeMap<>()).putIfAbsent(LoreText.number(chapter), chapter);
+                if (first != null) {
+                    problem("chapter " + LoreText.number(chapter) + " again (" + first + ".md has that number too), so the two are read in name order; give each chapter its own number");
+                }
+                if (englishChapters && !locale.equals(LintBook.FALLBACK_LOCALE) && !english.contains(chapter)) {
+                    problem("no " + LintBook.FALLBACK_LOCALE + "/" + chapter + ".md: chapters are matched across languages by file name, so every language reads this as a chapter of its own; name it as " + LintBook.FALLBACK_LOCALE + " names it");
+                }
+                if (text.blocks().stream().noneMatch(Block.Heading.class::isInstance)) {
+                    problem("chapter has no heading, so its title is made from its file name");
+                }
+            });
+        }
+        if (!names.contains(LORE_ENTRY)) {
+            String first = chapters.get(0);
+            Map<String, BookText> byLocale = book.entries().get(first);
+            String locale = byLocale.containsKey(LintBook.FALLBACK_LOCALE) ? LintBook.FALLBACK_LOCALE : byLocale.keySet().iterator().next();
+            if (byLocale.get(locale).get("title").isEmpty()) {
+                file = folder + locale + "/" + first + ".md";
+                problem("no title: (with no " + LORE_ENTRY + ".md, the book's front matter is its first chapter's), so the title page shows the book's id");
+            }
+        }
     }
 
     /** {@code pages:} is {@code single} or {@code spread} */
@@ -282,13 +335,16 @@ public final class BookLint {
             return;
         }
         String target = click.getValue().substring(Inline.ENTRY_LINK.length());
-        if (!book.isManual()) {
-            problem("link to '" + target + "': links between entries only work in manuals");
-            return;
-        }
         String[] parts = target.split("#", 2);
         String entry = parts[0];
-        if (entry.equals(INDEX) || entry.startsWith(CATEGORIES) || !book.entries().containsKey(entry)) {
+        if (!book.isManual()) {
+            // a lore book's links lead within its one text: to a chapter, or a heading in text.md or a chapter
+            boolean known = entry.equals(LORE_ENTRY) || LoreText.isChapter(entry);
+            if (!known || !book.entries().containsKey(entry)) {
+                problem("link to '" + target + "': no chapter '" + entry + "' (a lore book links to its chapters, 01-name, and to headings in them or in text.md)");
+                return;
+            }
+        } else if (entry.equals(INDEX) || entry.startsWith(CATEGORIES) || !book.entries().containsKey(entry)) {
             problem("link to '" + target + "': no entry '" + entry + "'");
             return;
         }

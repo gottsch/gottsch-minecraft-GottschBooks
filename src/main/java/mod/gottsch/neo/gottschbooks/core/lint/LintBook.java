@@ -19,6 +19,7 @@ package mod.gottsch.neo.gottschbooks.core.lint;
 
 import mod.gottsch.neo.gottschbooks.core.text.BookParser;
 import mod.gottsch.neo.gottschbooks.core.text.BookText;
+import mod.gottsch.neo.gottschbooks.core.text.LoreText;
 import net.minecraft.resources.ResourceLocation;
 
 import java.io.IOException;
@@ -146,6 +147,11 @@ public record LintBook(String id, BookText meta, Map<String, Map<String, BookTex
             text = byLocale.get(FALLBACK_LOCALE);
         }
         return Optional.ofNullable(text != null ? text : byLocale.values().iterator().next());
+    }
+
+    /** a lore book's text in {@code locale}, read as the game reads it ({@link LoreText}) */
+    public Optional<LoreText> lore(String locale) {
+        return LoreText.of(meta, entries.keySet(), name -> entry(name, locale));
     }
 
     /** a manual ({@code mode: manual} in book.md), rather than a lore book */
