@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - An entry explains an item when it spotlights it, has a recipe that makes it, has it as its `icon`, or lists it in
   the new `items:` front matter (item ids and `#tags`), in that order of preference.
 - `lookup:` in book.md: `always` answers lookups without the manual in the inventory, `never` turns them off.
+- A client config, `config/gottschbooks-client.toml`, whose `lookupHint = false` hides the tooltip line for players
+  who know their mods; the key keeps working. `/gottschbooks lookup hint on|off` sets it from chat.
+- `"announce_on_first_join": true` in a book's server entry: instead of giving the book, each player is told about it
+  once, in chat, with a **[Get it]** link. A `book.<ns>.<path>.announce` lang line words it. `announceBooks = false` in
+  `serverconfig/gottschbooks-server.toml` turns announcements off for a world; giving is never affected.
+- `/gottschbooks get <book>`: any player takes a book whose entry gives or announces it on first join, unless they
+  already carry it. `/gottschbooks open` is still for operators only.
+- `BookDef.announceOnFirstJoin()` and `BookDef.free()`; the four-argument constructor still works.
 - `GottschBooksClient.open(book, entry, item)`: opens an entry on the page that shows an item.
 - `/gottschbooks check` reports `items:` values that aren't items or tags, and unknown `lookup:` values.
 

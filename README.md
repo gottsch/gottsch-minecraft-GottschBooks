@@ -123,5 +123,5 @@ jar:
   locked behind the *Diamonds!* advancement.
 - `example:mistakes`: a manual that is wrong on purpose, for `/gottschbooks check example:mistakes` to find.
 
-The first two are given on first join, and are a working reference for [WRITING.md](WRITING.md). They match the
+The journal is given on first join and the field guide is announced in chat with a [Get it] link. Both are a working reference for [WRITING.md](WRITING.md). They match the
 NeoForge 1.21.1 repo's, except that items use 1.20.1 NBT in place of components.

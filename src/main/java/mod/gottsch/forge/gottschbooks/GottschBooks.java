@@ -19,11 +19,15 @@ package mod.gottsch.forge.gottschbooks;
 
 import mod.gottsch.forge.gottschbooks.api.BookDef;
 import mod.gottsch.forge.gottschbooks.api.GottschBooksRegistries;
+import mod.gottsch.forge.gottschbooks.client.ClientConfig;
 import mod.gottsch.forge.gottschbooks.core.GottschBooksItems;
+import mod.gottsch.forge.gottschbooks.core.ServerConfig;
 import mod.gottsch.forge.gottschbooks.core.advancement.GottschBooksCriteria;
 import mod.gottsch.forge.gottschbooks.core.network.GottschBooksNetwork;
 import net.minecraftforge.eventbus.api.IEventBus;
+import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.config.ModConfig;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.minecraftforge.registries.DataPackRegistryEvent;
 import org.apache.logging.log4j.LogManager;
@@ -46,6 +50,8 @@ public class GottschBooks {
         GottschBooksItems.register(modEventBus);
         GottschBooksNetwork.register();
         modEventBus.addListener(GottschBooks::onNewDataPackRegistries);
+        ModLoadingContext.get().registerConfig(ModConfig.Type.CLIENT, ClientConfig.SPEC);
+        ModLoadingContext.get().registerConfig(ModConfig.Type.SERVER, ServerConfig.SPEC);
     }
 
     private static void onNewDataPackRegistries(DataPackRegistryEvent.NewRegistry event) {

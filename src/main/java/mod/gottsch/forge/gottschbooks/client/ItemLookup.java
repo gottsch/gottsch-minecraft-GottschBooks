@@ -70,7 +70,8 @@ import java.util.Set;
  * "Where is this item explained?": hovering an item in any inventory screen adds a tooltip line naming the manual
  * that explains it, and the lookup key (B by default) opens the manual there, on the page that shows the item. The
  * player must carry the manual, unless its book.md says {@code lookup: always} ({@code lookup: never} turns the
- * lookup off for a book). Locked entries never answer.
+ * lookup off for a book). Locked entries never answer. The client config's {@code lookupHint} (or
+ * {@code /gottschbooks lookup hint off}) hides the tooltip line and keeps the key.
  * <p>
  * An entry explains an item when it has a {@code spotlight} of it, a {@code recipe} that makes it, the item as its
  * {@code icon}, or the item (or a {@code #tag} holding it) in its {@code items:} front matter; in that order of
@@ -256,7 +257,7 @@ public final class ItemLookup {
         ItemStack stack = event.getItemStack();
         tooltipStack = stack;
         tooltipAt = Util.getMillis();
-        if (Screen.hasShiftDown()) {
+        if (Screen.hasShiftDown() || !ClientConfig.LOOKUP_HINT.get()) {
             return;
         }
         find(stack, minecraft.player).ifPresent(hit -> event.getTooltipElements().add(Either.left(

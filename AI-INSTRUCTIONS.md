@@ -321,11 +321,12 @@ by it. If you aren't sure of the exact data, leave it out and say so in your rep
 | Field | Use |
 |---|---|
 | `give_on_first_join` | `true` gives each player the book once, on first join |
+| `announce_on_first_join` | `true` tells each player about the book once, in chat, with a [Get it] link, instead of giving it. Ask the person which they want; for a manual, suggest this one |
 | `track_reading` | `false` for a manual (so it doesn't count toward "read every book" advancements). Leave it out for a lore book |
 | `item` | the item given; leave it out to use the library's own `gottschbooks:book`, or name the mod's own book item |
 | `disabled` | `true` switches the book off. Don't write it unless asked |
 
-A manual that isn't given on first join needs no server entry.
+A manual that isn't given or announced on first join needs no server entry.
 
 **Without code, by command:**
 
@@ -413,5 +414,6 @@ Use a feature only if the person's Gottsch Books version has it:
 | `{font:...}` | 1.1.0 |
 | tables, `{page}`, `{page:single}`, `{page:spread}`, `pages:`, recipe layouts for furnaces, stonecutters and smithing, `/gottschbooks check` | 1.2.0 |
 | `items:`, `lookup:` (item lookup) | 1.3.0 |
+| `announce_on_first_join` | 1.3.0 |
 
 Before 1.2.0, a page break is written `<!-- page -->` (1.2.0 and later read it too).
