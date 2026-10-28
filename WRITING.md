@@ -20,6 +20,9 @@ commands and loot tables, and the build setup), both forms are shown.
 - [Tips and gotchas](#tips-and-gotchas)
 - [Checking a book](#checking-a-book)
 
+Writing a book with an AI? Give it [AI-INSTRUCTIONS.md](AI-INSTRUCTIONS.md) along with your docs: a version of this
+page written for an AI, with the rules that keep it from inventing ids or using Markdown the reader doesn't know.
+
 ## Two kinds of book
 
 | | Lore book | Manual |

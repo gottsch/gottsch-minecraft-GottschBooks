@@ -29,6 +29,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Example books: *Furnaces and Workstations* and *Ores at a Glance* (two pages of prose, then a single wide page of
   tables with icons, then two pages again) in the field guide, a tide table in the journal, and `example:mistakes`, a manual that is wrong on purpose for the check to
   find.
+- AI-INSTRUCTIONS.md: instructions for an AI to write a whole book from a mod's or pack's own docs, in any chat
+  AI (free plans included) or as a Claude Code skill: the files, the exact syntax, rules against invented ids,
+  working in reply-sized parts, and a report of what to check. `tools/split-book.py` (and `split-book.ps1` for
+  Windows without Python) write the files from the saved replies. README: *Writing books with an AI*.
+- The AI kit, `gottschbooks-ai-kit-<version>.zip`: the instructions, both scripts and a plain-text how-to, built by
+  `./gradlew aiKit` (and with the jar) to upload next to each release.
 
 ### Changed
 - A line of text with glyphs taller than a line, such as a font of large pictures, grows to fit them instead of

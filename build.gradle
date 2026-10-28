@@ -146,6 +146,25 @@ tasks.register('publishAll') {
     dependsOn 'publish', 'publishToMavenLocal'
 }
 
+// The AI kit: AI-INSTRUCTIONS.md, the scripts that turn a chat's replies into book files, and a how-to, as one zip to
+// upload as an additional file next to each release. Built with the jar; the same zip serves both loaders.
+var aiKit = tasks.register('aiKit', Zip) {
+    group = 'distribution'
+    description = 'Builds gottschbooks-ai-kit-<version>.zip: the AI instructions, the split-book scripts and a how-to.'
+    archiveFileName = "gottschbooks-ai-kit-${mod_version}.zip"
+    destinationDirectory = layout.buildDirectory.dir('libs')
+    from('AI-INSTRUCTIONS.md')
+    from('tools') {
+        include 'split-book.py', 'split-book.ps1'
+    }
+    from('tools/AI-KIT-README.txt') {
+        rename { 'README.txt' }
+    }
+}
+tasks.named('assemble') {
+    dependsOn aiKit
+}
+
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
 }
