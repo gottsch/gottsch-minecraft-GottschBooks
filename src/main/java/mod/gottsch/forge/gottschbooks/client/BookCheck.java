@@ -33,6 +33,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -91,6 +92,9 @@ public final class BookCheck {
             }
         });
         pages(book.meta());
+        book.meta().get(ItemLookup.LOOKUP).map(String::strip)
+                .filter(value -> !List.of(ItemLookup.CARRIED, ItemLookup.ALWAYS, ItemLookup.NEVER).contains(value.toLowerCase(Locale.ROOT)))
+                .ifPresent(value -> problem("lookup '" + value + "' isn't carried, always or never, so the manual answers item lookups only when carried"));
         if (book.isManual()) {
             if (!book.entries().containsKey(Manual.INDEX)) {
                 problem("manual has no " + Manual.INDEX + ".md, so its title is its id and it has no landing text");
@@ -115,8 +119,22 @@ public final class BookCheck {
                     problem("category '" + category + "' has no categories/" + category + ".md, so the entry is listed after the categories"));
             text.get("advancement").filter(id -> ResourceLocation.tryParse(id) == null).ifPresent(id ->
                     problem("advancement '" + id + "' isn't a resource location, so the entry is never hidden"));
+            text.get(ItemLookup.ITEMS).ifPresent(this::items);
         }
         blocks(text.blocks(), locale);
+    }
+
+    /** each of {@code items:}'s references is an item, and each {@code #tag} a tag the game has */
+    private void items(String items) {
+        for (String token : ItemLookup.tokens(items)) {
+            if (token.startsWith("#")) {
+                if (ItemLookup.tag(token).isEmpty()) {
+                    problem("items: no item tag '" + token + "'");
+                }
+            } else {
+                Icons.problem(token).ifPresent(why -> problem("items: " + why));
+            }
+        }
     }
 
     private void blocks(List<Block> blocks, String locale) {

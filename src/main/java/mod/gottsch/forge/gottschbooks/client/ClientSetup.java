@@ -20,11 +20,12 @@ package mod.gottsch.forge.gottschbooks.client;
 import mod.gottsch.forge.gottschbooks.GottschBooks;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.RegisterClientReloadListenersEvent;
+import net.minecraftforge.client.event.RegisterKeyMappingsEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
 /**
- * Client wiring: the book loader runs on every resource reload.
+ * Client wiring: the book loader runs on every resource reload, and the item lookup has its key.
  *
  * @author Mark Gottschling on 10/17/2026
  */
@@ -36,5 +37,10 @@ public final class ClientSetup {
     @SubscribeEvent
     public static void onRegisterReloadListeners(RegisterClientReloadListenersEvent event) {
         event.registerReloadListener(new BookLoader());
+    }
+
+    @SubscribeEvent
+    public static void onRegisterKeyMappings(RegisterKeyMappingsEvent event) {
+        event.register(ItemLookup.KEY);
     }
 }

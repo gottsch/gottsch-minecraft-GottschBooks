@@ -9,5 +9,8 @@
   "gottschbooks.command.check.more": "...and %s more, all listed in the log",
   "gottschbooks.command.check.missing": "No book %s",
   "gottschbooks.recipe.time": "%ss",
+  "gottschbooks.lookup.hint": "[%s] %s",
+  "key.gottschbooks.lookup": "Look Up Item in a Manual",
+  "key.categories.gottschbooks": "Gottsch Books",
   "item.gottschbooks.book": "Book"
 }

@@ -175,6 +175,7 @@ ignored.
 |---|---|---|
 | `mode` | book.md | `manual`; anything else (or no book.md) is a lore book |
 | `icon` | book.md | the manual's icon on its contents page, when it isn't opened from an item |
+| `lookup` | book.md | when the manual answers [item lookups](#item-lookup): `carried` (the default) while the player carries it, `always`, or `never` |
 | `skin` | book.md | a texture folder (`mymod:textures/gui/my_book`) holding `cover.png`, `page.png` and `ornament.png`; see [Tips](#tips-and-gotchas) |
 | `pages` | book.md, entries | the [page style](#page-styles) the text starts in: `single` for one wide page, `spread` (the default) for two side by side. An entry's setting wins over book.md's |
 | `title` | text.md, _index.md, categories, entries | the title. For a lore book, a leading `# Heading` works too |
@@ -183,6 +184,7 @@ ignored.
 | `sort` | categories, entries | a number; lower comes first. Ties, and anything without one, sort by title |
 | `category` | entries | a category id (the file name under `categories/`). Entries without a known category are listed last |
 | `advancement` | entries | `ns:id`: the entry stays hidden until the player has this advancement |
+| `items` | entries | items the entry explains, for [item lookups](#item-lookup): item ids and `#ns:tag` item tags, separated by commas |
 
 An `icon` (and a spotlight's item) is either an item id, `minecraft:diamond`, or a picture from an illustration
 scheme, `scheme:namespace:id` (see [Pictures and blocks](#pictures-and-blocks)). An item may carry components, as
@@ -388,6 +390,37 @@ Read more [on the wiki](https://example.com/wiki).
   contents page.
 - A `[text]` that isn't followed by a link target is just text, so `[brackets]` in prose are safe.
 
+## Item lookup
+
+While a player carries a manual, hovering over an item in any inventory adds a line to its tooltip naming the key
+and the manual, *[B] A Field Guide to the Overworld*, and pressing the key opens the manual at that entry, on the page
+that shows the item. Closing the book goes back to the inventory. The key is **Look Up Item in a Manual** under
+Controls; the line shows whatever it is bound to, and unbinding it removes the line. The line is one line at most (a
+long title is cut short), and is left out while SHIFT is held, which many mods use for a long detail view; the key
+works either way.
+
+An entry explains an item when it has:
+
+1. a `spotlight` of the item, or
+2. a `recipe` that makes it, or
+3. the item as its `icon`, or
+4. the item in its `items:` front matter.
+
+When several entries could answer, that is also the order of preference; after that, the first in the contents
+wins. `items:` is for things explained in plain text, and takes tags too:
+
+```markdown
+---
+title: Tools
+icon: minecraft:iron_pickaxe
+items: #minecraft:pickaxes, #minecraft:axes, minecraft:shears
+---
+```
+
+Locked entries never answer, so a lookup can't give away an entry before its advancement. `lookup: always` in
+book.md answers without the manual in the inventory, which suits a manual opened by a plain item or a command;
+`lookup: never` turns lookups off for a book. Only manuals answer, never lore books.
+
 ## The book on the server
 
 The text is a client asset, so the server only knows a book exists if it has a **server entry**, a datapack file at
@@ -437,8 +470,9 @@ Book tags live at `data/<ns>/tags/gottschbooks/book/<tag>.json` (`{"values": ["m
 - **An item:** `gottschbooks:book` (no code), or your own `BookItem` (see the quick starts). Its client side opens
   the reader; its server side records the read. Any `BookItem` takes its name from the lang key
   `book.<namespace>.<path>` (a `/` in the path becomes `.`) when a language file has it.
-- **Client code:** `GottschBooksClient.open(book)`, `open(book, iconStack)`, or `open(book, "entry#anchor")` for a
-  manual. Client only: call it from a screen, a keybind or the client branch of `Item#use`.
+- **Client code:** `GottschBooksClient.open(book)`, `open(book, iconStack)`, `open(book, "entry#anchor")` for a
+  manual, or `open(book, "entry", item)` to open an entry on the page that shows `item` (closing it returns to the
+  screen that was open). Client only: call it from a screen, a keybind or the client branch of `Item#use`.
 - **A command:** `/gottschbooks open <players> <book> [entry]` (operators). Handy for tutorials and command
   blocks.
 
@@ -509,6 +543,7 @@ It finds:
   book
 - fonts that aren't there
 - entries whose `category` has no `categories/<id>.md`
+- `items:` values that aren't items or item tags, and a `lookup` other than `carried`, `always` or `never`
 - fenced blocks the reader doesn't know (` ```chart `), which show as plain lines
 - table rows with too few or too many cells, icons after a cell's text, and empty tables
 - a `pages` value, or a `{page:...}` style, other than `single` or `spread`

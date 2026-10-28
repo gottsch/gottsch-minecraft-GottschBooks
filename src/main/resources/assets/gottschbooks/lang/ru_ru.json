@@ -9,5 +9,8 @@
   "gottschbooks.command.check.more": "...и ещё %s, все они в журнале",
   "gottschbooks.command.check.missing": "Книга %s не найдена",
   "gottschbooks.recipe.time": "%s с",
+  "gottschbooks.lookup.hint": "[%s] %s",
+  "key.gottschbooks.lookup": "Найти предмет в справочнике",
+  "key.categories.gottschbooks": "Gottsch Books",
   "item.gottschbooks.book": "Книга"
 }

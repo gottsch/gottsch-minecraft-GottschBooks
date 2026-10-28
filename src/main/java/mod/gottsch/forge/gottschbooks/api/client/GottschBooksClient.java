@@ -27,6 +27,7 @@ import mod.gottsch.forge.gottschbooks.core.text.BookText;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
@@ -44,7 +45,7 @@ public final class GottschBooksClient {
 
     /** Opens {@code book}; a manual opens where it was left (else its contents), with its {@code icon:} on the title. */
     public static boolean open(ResourceLocation book) {
-        return open(book, Optional.empty(), Optional.empty());
+        return open(book, Optional.empty(), Optional.empty(), Optional.empty());
     }
 
     /**
@@ -54,7 +55,7 @@ public final class GottschBooksClient {
      * @return false, after telling the player, when the book has no text loaded
      */
     public static boolean open(ResourceLocation book, ItemStack icon) {
-        return open(book, Optional.of(icon), Optional.empty());
+        return open(book, Optional.of(icon), Optional.empty(), Optional.empty());
     }
 
     /**
@@ -62,10 +63,19 @@ public final class GottschBooksClient {
      * entry that doesn't exist, or is still locked, opens the contents instead.
      */
     public static boolean open(ResourceLocation book, String entry) {
-        return open(book, Optional.empty(), Optional.of(entry));
+        return open(book, Optional.empty(), Optional.of(entry), Optional.empty());
     }
 
-    private static boolean open(ResourceLocation book, Optional<ItemStack> icon, Optional<String> entry) {
+    /**
+     * Opens manual {@code book} at {@code entry}, on the page that shows {@code item} (its spotlight, else a recipe
+     * that makes it), else the entry's first page. Closing the book goes back to the screen that was open, such as
+     * the inventory the item was in.
+     */
+    public static boolean open(ResourceLocation book, String entry, Item item) {
+        return open(book, Optional.empty(), Optional.of(entry), Optional.of(item));
+    }
+
+    private static boolean open(ResourceLocation book, Optional<ItemStack> icon, Optional<String> entry, Optional<Item> item) {
         Minecraft minecraft = Minecraft.getInstance();
         String locale = minecraft.getLanguageManager().getSelected();
         Optional<LoadedBook> loaded = BookLoader.get(book);
@@ -73,7 +83,9 @@ public final class GottschBooksClient {
             LoadedBook manual = loaded.get();
             ItemStack shown = icon.orElseGet(() -> manual.meta().get("icon").flatMap(Icons::stack)
                     .orElseGet(() -> new ItemStack(Items.BOOK)));
-            minecraft.setScreen(new BookScreen(manual, Manual.of(manual, locale), shown.copyWithCount(1), entry));
+            BookScreen screen = new BookScreen(manual, Manual.of(manual, locale), shown.copyWithCount(1), entry);
+            item.ifPresent(it -> screen.showing(it, minecraft.screen));
+            minecraft.setScreen(screen);
             return true;
         }
         Optional<BookText> text = loaded.flatMap(b -> b.entry(LoadedBook.LORE_ENTRY, locale));
