@@ -8,44 +8,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.3.0] - Unreleased
 
 ### Added
-- Item lookup: hovering over an item in any inventory adds a tooltip line naming the manual that explains it, and
-  the **Look Up Item in a Manual** key (B by default) opens the manual at that entry, on the page that shows the item.
-  Closing the book returns to the inventory. Works while the player carries the manual; locked entries never answer.
-  The line shows the key as bound, never wraps, and is left out while SHIFT is held, to keep long tooltips short.
+
+#### Item lookup
+- Hovering over an item in any inventory adds a tooltip line naming the manual that explains it, and the **Look Up
+  Item in a Manual** key (B by default) opens the manual at that entry, on the page that shows the item. Closing the
+  book returns to the inventory. Works while the player carries the manual; locked entries never answer. The line
+  shows the key as bound, never wraps, and is left out while SHIFT is held, to keep long tooltips short.
 - An entry explains an item when it spotlights it, has a recipe that makes it, has it as its `icon`, or lists it in
   the new `items:` front matter (item ids and `#tags`), in that order of preference.
 - `lookup:` in book.md: `always` answers lookups without the manual in the inventory, `never` turns them off.
-- Bookmarks: **Bookmark** above the book (or Ctrl+D) marks a page of a lore book or manual entry; each bookmark is a
-  ribbon out of the book's edge, which a click opens and a right-click removes (up to 10 a book). A bookmark finds
-  its page however the window lays the text out. Kept per player in `gottschbooks/reading.json`.
-- "New" marks: entries the player hasn't opened have a red dot on the contents (and their categories, and search
-  results), and the contents counts them with a **Mark all read** link. Kept per player in `gottschbooks/reading.json`.
-- The item lookup's tooltip line goes away for an item once its entry has been opened (`lookupHintUntilRead`, on by
-  default); the key still works.
-- WRITING.md has a Skins section on giving a book its own cover, page and ornament; the example journal has a
-  sea-blue skin.
-- A client config, `config/gottschbooks-client.toml`, whose `lookupHint = false` hides the tooltip line for players
-  who know their mods; the key keeps working. `/gottschbooks lookup hint on|off` sets it from chat.
+- `lookup_from:` (an entry's, or book.md's for every entry): `items` answers only for the entry's `items:`, so an
+  icon or spotlight can be just for show; `none` answers for nothing; `all` (the default) for everything shown.
+- **One kind of an item:** an item written with components (`items: minecraft:filled_map[custom_data={D2DungeonMap:{}}]`)
+  answers only for stacks that have them: `custom_data` as a subset of the stack's, other components exactly. Such
+  an entry comes before any entry for the plain item, so a manual can explain one kind of map apart from maps.
+- The tooltip line goes away for an item once its entry has been opened (`lookupHintUntilRead`, on by default); the
+  key still works.
+
+#### Reading
+- **Search:** **Search** above a manual (or Ctrl+F) lists the entries that mention every word typed, with a line of
+  each around the word. A result opens on the page with the word; Back returns to the results. Titles, text, tables,
+  captions and spotlighted items' names are searched; locked entries never show.
+- **"New" marks:** entries the player hasn't opened have a red dot on the contents (and their categories, and search
+  results), and the contents counts them with a **Mark all read** link.
+- **Bookmarks:** **Bookmark** above the book (or Ctrl+D) marks a page of a lore book or manual entry; each bookmark is
+  a ribbon out of the book's edge, which a click opens and a right-click removes (up to 10 a book). A bookmark finds
+  its page however the window lays the text out.
+- What a player has opened and bookmarked is kept on their computer, in `gottschbooks/reading.json`, for every world.
+
+#### Getting books to players
 - `"announce_on_first_join": true` in a book's server entry: instead of giving the book, each player is told about it
   once, in chat, with a **[Get it]** link. A `book.<ns>.<path>.announce` lang line words it. `announceBooks = false` in
   `serverconfig/gottschbooks-server.toml` turns announcements off for a world; giving is never affected.
 - `/gottschbooks get <book>`: any player takes a book whose entry gives or announces it on first join, unless they
   already carry it. `/gottschbooks open` is still for operators only.
-- `BookDef.announceOnFirstJoin()` and `BookDef.free()`; the four-argument constructor still works.
-- Manual search: **Search** above the book (or Ctrl+F) lists the entries that mention every word typed, with a
-  line of each around the word. A result opens on the page with the word; Back returns to the results. Titles,
-  text, tables, captions and spotlighted items' names are searched; locked entries never show.
-- `lookup_from:` (entries, or book.md for every entry): `items` answers lookups only for the entry's `items:`, so an
-  icon or spotlight can be just for show; `none` answers for nothing; `all` (the default) for everything shown.
-- Item lookups match on components: an item written with them (`items: minecraft:filled_map[custom_data={D2DungeonMap:{}}]`) answers only for stacks that
-  have them, components (`custom_data` as a subset of the stack's, the rest exactly), and comes before any entry for the plain item.
-- `GottschBooksClient.open(book, entry, stack)`: opens an entry on the page that shows a stack (a spotlight of that
-  very kind first).
+
+#### Configs
+- A client config, `config/gottschbooks-client.toml`: `lookupHint = false` hides the item lookup line for players who
+  know their mods (the key keeps working), and `/gottschbooks lookup hint on|off` sets it from chat;
+  `lookupHintUntilRead` (above).
+- A server config, `serverconfig/gottschbooks-server.toml`, with `announceBooks` (above).
+
+#### Checking books
 - `/gottschbooks check` writes every problem to `logs/gottschbooks-check.txt`, grouped by file, and chat links to it:
   **[Open report]** opens it, **[Copy]** copies it whole. Chat now shows the first 10 problems.
-- `/gottschbooks check` reports `items:` values that aren't items or tags, unknown `lookup:` and `lookup_from:`
-  values, `lookup_from: items` without `items:`, and a vanilla icon that answers lookups in a mod's manual when the
-  entry shows that item nowhere else.
+- It also reports `items:` values that aren't items or tags, unknown `lookup:` and `lookup_from:` values,
+  `lookup_from: items` without `items:`, and a vanilla icon that answers lookups in a mod's manual when the entry
+  shows that item nowhere else.
+
+#### For mod developers
+- `GottschBooksClient.open(book, entry, stack)`: opens an entry on the page that shows a stack (a spotlight of that
+  very kind first).
+- `BookDef.announceOnFirstJoin()` and `BookDef.free()`; the four-argument constructor still works.
+
+#### Docs and examples
+- WRITING.md has sections on search, new entries, bookmarks, item lookup and skins (giving a book its own cover,
+  page and ornament).
+- The example journal has a sea-blue skin; the field guide is announced rather than given, and shows `lookup_from`
+  and an item lookup for one kind of potion.
 
 ## [1.2.0] - Unreleased
 
