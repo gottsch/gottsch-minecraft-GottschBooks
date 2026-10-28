@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - An entry explains an item when it spotlights it, has a recipe that makes it, has it as its `icon`, or lists it in
   the new `items:` front matter (item ids and `#tags`), in that order of preference.
 - `lookup:` in book.md: `always` answers lookups without the manual in the inventory, `never` turns them off.
+- Bookmarks: **Bookmark** above the book (or Ctrl+D) marks a page of a lore book or manual entry; each bookmark is a
+  ribbon out of the book's edge, which a click opens and a right-click removes (up to 10 a book). A bookmark finds
+  its page however the window lays the text out. Kept per player in `gottschbooks/reading.json`.
 - "New" marks: entries the player hasn't opened have a red dot on the contents (and their categories, and search
   results), and the contents counts them with a **Mark all read** link. Kept per player in `gottschbooks/reading.json`.
 - The item lookup's tooltip line goes away for an item once its entry has been opened (`lookupHintUntilRead`, on by
