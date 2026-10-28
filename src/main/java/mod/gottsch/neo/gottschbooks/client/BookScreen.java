@@ -18,11 +18,14 @@
 package mod.gottsch.neo.gottschbooks.client;
 
 import mod.gottsch.neo.gottschbooks.GottschBooks;
+import mod.gottsch.neo.gottschbooks.core.ItemMatch;
 import mod.gottsch.neo.gottschbooks.core.text.Block;
 import mod.gottsch.neo.gottschbooks.core.text.BookText;
 import mod.gottsch.neo.gottschbooks.core.text.Inline;
+import mod.gottsch.neo.gottschbooks.core.text.TextSearch;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.font.glyphs.BakedGlyph;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
@@ -65,7 +68,7 @@ import java.util.Optional;
  *     <li><b>Manual</b> ({@link Manual}): opens on the contents (the landing text, then each category's entries);
  *     a click opens an entry, {@code [text](entry:id#anchor)} links jump between entries, and Back and Contents sit
  *     above the book. Entries can show {@code spotlight}, {@code recipe}, {@code image} and {@code entity}
- *     blocks.</li>
+ *     blocks. Search (above the book, or Ctrl+F) finds the entries that mention every word typed.</li>
  * </ul>
  * Moved from Magic Treasures' {@code LoreBookScreen}.
  *
@@ -94,6 +97,10 @@ public class BookScreen extends Screen {
     private static final float TITLE_SCALE = 1.5F;
     /** illustrations aim for this, rounded so each item pixel covers whole screen pixels (see {@link #init}) */
     private static final double ILLUSTRATION_TARGET = 1.5;
+    /** the {@code entry} of a manual's search page, which no entry id can be */
+    private static final String SEARCH = "\u0000search";
+    /** the search box's frame, drawn on the page, and how far its text sits inside it */
+    private static final int SEARCH_BOX_H = 14, SEARCH_INSET_X = 4, SEARCH_INSET_Y = 3;
 
     /** where each book was left, for this game session: a lore book's section, a manual's entry and section */
     private static final Map<ResourceLocation, Place> LAST_PLACE = new HashMap<>();
@@ -121,10 +128,17 @@ public class BookScreen extends Screen {
     private String pendingAnchor;
     /** an item whose page to open at, once the layout exists */
     @Nullable
-    private Item pendingItem;
+    private ItemStack pendingItem;
     /** the screen to go back to on closing; null to close to the game */
     @Nullable
     private Screen parent;
+    /** what the search page searches for, kept while reading what it found */
+    private String query = "";
+    @Nullable
+    private ManualSearch search;
+    private List<ManualSearch.Result> results = List.of();
+    @Nullable
+    private EditBox searchBox;
 
     // layout, recomputed in init() (it runs again when the window is resized)
     private int bookX, bookY, bookW, bookH;
@@ -148,7 +162,7 @@ public class BookScreen extends Screen {
     private final List<TextHit> textHits = new ArrayList<>();
 
     private enum Kind { TEXT, BLANK, ORNAMENT, TITLE, ENTRY_TITLE, ILLUSTRATION, SPOTLIGHT, RECIPE, IMAGE, ENTITY,
-        CATEGORY, LINK_ROW, BREAK, HEADING, TABLE_HEADER, TABLE_ROW }
+        CATEGORY, LINK_ROW, BREAK, HEADING, TABLE_HEADER, TABLE_ROW, SEARCH_BOX }
 
     /** a page's lines, and whether it is a single wide page ({@code {page:single}}) */
     private record Page(List<Line> lines, boolean wide) {}
@@ -255,7 +269,7 @@ public class BookScreen extends Screen {
     }
 
     /** opens at the page showing {@code item} (see {@link #pageOfItem}), and closes back to {@code parent} */
-    public void showing(Item item, @Nullable Screen parent) {
+    public void showing(ItemStack item, @Nullable Screen parent) {
         this.pendingItem = item;
         this.parent = parent;
     }
@@ -329,7 +343,23 @@ public class BookScreen extends Screen {
         int buttonY = bookY + bookH - COVER_BORDER - 16;
         back = addRenderableWidget(new PageButton(bookX + COVER_BORDER + 6, buttonY, false, b -> turn(-1), true));
         forward = addRenderableWidget(new PageButton(bookX + bookW - COVER_BORDER - 6 - 23, buttonY, true, b -> turn(1), true));
+        if (isManual()) {
+            // no border or shadow, in ink: the page draws the frame (see drawPage), so the box looks written on
+            searchBox = new EditBox(font, 0, 0, pageTextW, SEARCH_BOX_H - SEARCH_INSET_Y, Component.translatable("gottschbooks.search"));
+            searchBox.setBordered(false);
+            searchBox.setTextShadow(false);
+            searchBox.setTextColor(INK);
+            searchBox.setMaxLength(64);
+            searchBox.setHint(Component.translatable("gottschbooks.search.hint")
+                    .withStyle(style -> style.withColor(NOTE & 0xFFFFFF).withItalic(true)));
+            searchBox.setValue(query);
+            searchBox.setResponder(this::searched);
+            addRenderableWidget(searchBox);
+        }
         updateButtons();
+        if (SEARCH.equals(entry)) {
+            focusSearch();
+        }
     }
 
     private int remembered() {
@@ -581,6 +611,8 @@ public class BookScreen extends Screen {
             flow.blocks(loreBlocks);
         } else if (entry == null) {
             contents(flow);
+        } else if (SEARCH.equals(entry)) {
+            searchPage(flow);
         } else {
             Manual.Entry current = manual.entry(entry).orElseThrow();
             Line title = flow.add(Kind.ENTRY_TITLE, entryTitleHeight(current.title()));
@@ -623,11 +655,40 @@ public class BookScreen extends Screen {
         }
     }
 
-    private void row(Flow flow, Manual.Entry entry) {
+    private Line row(Flow flow, Manual.Entry entry) {
         Line row = flow.add(Kind.LINK_ROW, ROW_H);
         row.label = entry.title();
         row.item = Icons.stack(entry.icon()).orElse(ItemStack.EMPTY);
         row.target = entry.id();
+        return row;
+    }
+
+    /**
+     * the search page: room for the search box (a widget, placed by {@link #updateButtons}), then what the query
+     * finds, each entry with a line of its text that a click also opens
+     */
+    private void searchPage(Flow flow) {
+        flow.add(Kind.SEARCH_BOX, SEARCH_BOX_H + 8);
+        if (TextSearch.terms(query).isEmpty()) {
+            results = List.of();
+            flow.text(Component.translatable("gottschbooks.search.prompt"), NOTE, null);
+            return;
+        }
+        if (search == null) {
+            search = new ManualSearch(manual);
+        }
+        results = search.find(query, font, textW);
+        flow.text(results.isEmpty() ? Component.translatable("gottschbooks.search.none", query.strip())
+                : Component.translatable("gottschbooks.search.found", results.size()), NOTE, null);
+        for (ManualSearch.Result result : results) {
+            flow.add(Kind.BLANK, LIST_GAP);
+            Line row = row(flow, result.entry());
+            result.snippet().ifPresent(snippet -> {
+                row.keep = LINE_H;
+                ClickEvent open = new ClickEvent(ClickEvent.Action.CHANGE_PAGE, Inline.ENTRY_LINK + result.entry().id());
+                flow.text(snippet.copy().withStyle(style -> style.withClickEvent(open)), NOTE, null);
+            });
+        }
     }
 
     private Optional<RecipeView> recipe(String argument) {
@@ -782,19 +843,61 @@ public class BookScreen extends Screen {
         return 0;
     }
 
-    /** the first page with a spotlight of {@code item}, else with a recipe that makes it, else the first page */
-    private int pageOfItem(Item item) {
-        for (Kind kind : List.of(Kind.SPOTLIGHT, Kind.RECIPE)) {
+    /**
+     * the first page with a spotlight of {@code item} written with components it has (a Dungeon Map among maps), else
+     * with a spotlight of the item, else with a recipe that makes it, else the first page
+     */
+    private int pageOfItem(ItemStack item) {
+        for (int pass = 0; pass < 3; pass++) {
+            Kind kind = pass < 2 ? Kind.SPOTLIGHT : Kind.RECIPE;
             for (int p = 0; p < pages.size(); p++) {
                 for (Line line : pages.get(p).lines()) {
                     ItemStack shown = line.kind != kind ? ItemStack.EMPTY : kind == Kind.SPOTLIGHT ? line.item : line.recipe.result();
-                    if (shown.is(item)) {
+                    boolean specific = pass > 0 || !shown.getComponentsPatch().isEmpty() && ItemMatch.matches(shown.getComponentsPatch(), item);
+                    if (shown.is(item.getItem()) && specific) {
                         return p;
                     }
                 }
             }
         }
         return 0;
+    }
+
+    /** the first page with text holding one of {@code terms}, trying them in order; else the first page */
+    private int pageOfText(List<String> terms) {
+        for (String term : terms) {
+            for (int p = 0; p < pages.size(); p++) {
+                for (Line line : pages.get(p).lines()) {
+                    if (TextSearch.indexOf(lineText(line), term, 0) >= 0) {
+                        return p;
+                    }
+                }
+            }
+        }
+        return 0;
+    }
+
+    /** a line's text, as search sees it ("" for a line without any) */
+    private static String lineText(Line line) {
+        StringBuilder text = new StringBuilder();
+        switch (line.kind) {
+            case TEXT, HEADING -> plain(line.text, text);
+            case SPOTLIGHT -> text.append(line.item.getHoverName().getString());
+            case ILLUSTRATION -> text.append(line.item.getHoverName().getString()).append(' ').append(line.label.getString());
+            case TABLE_HEADER, TABLE_ROW -> {
+                TableView.Row row = line.row < 0 ? line.table.header() : line.table.rows().get(line.row);
+                row.cells().forEach(cell -> cell.lines().forEach(seq -> plain(seq, text.append(' '))));
+            }
+            default -> { }
+        }
+        return text.toString();
+    }
+
+    private static void plain(FormattedCharSequence seq, StringBuilder into) {
+        seq.accept((index, style, codepoint) -> {
+            into.appendCodePoint(codepoint);
+            return true;
+        });
     }
 
     private int currentSection() {
@@ -820,6 +923,46 @@ public class BookScreen extends Screen {
     private void updateButtons() {
         back.visible = view > 0;
         forward.visible = view < lastView();
+        if (searchBox != null) {
+            // on the search page's first page only, over the room left for it
+            searchBox.visible = SEARCH.equals(entry) && view == 0;
+            if (searchBox.visible) {
+                searchBox.setX(bookX + COVER_BORDER + PAGE_PAD + SEARCH_INSET_X);
+                searchBox.setY(bookY + COVER_BORDER + PAGE_PAD + SEARCH_INSET_Y);
+                searchBox.setWidth((views.getFirst().wide() ? wideTextW : pageTextW) - 2 * SEARCH_INSET_X);
+            } else if (getFocused() == searchBox) {
+                setFocused(null);
+            }
+        }
+    }
+
+    /** opens the search page at its first page, ready to type */
+    private void openSearch() {
+        if (!isManual()) {
+            return;
+        }
+        if (!SEARCH.equals(entry)) {
+            history.push(new Place(entry, view));
+            show(SEARCH, null, 0);
+        } else if (view != 0) {
+            view = 0;
+            updateButtons();
+        }
+        focusSearch();
+    }
+
+    private void focusSearch() {
+        if (searchBox != null && searchBox.visible) {
+            setFocused(searchBox);
+        }
+    }
+
+    /** the search box changed: search again */
+    private void searched(String text) {
+        query = text;
+        paginate();
+        view = 0;
+        updateButtons();
     }
 
     /** opens {@code target} ({@code entry}, {@code entry#anchor}, or null for the contents), remembering where we were */
@@ -836,8 +979,14 @@ public class BookScreen extends Screen {
                 return;
             }
         }
+        boolean fromSearch = SEARCH.equals(entry);
         history.push(new Place(entry, view));
         show(to, anchor, -1);
+        // a search result opens where its words are
+        if (fromSearch && anchor == null && to != null) {
+            view = viewOf(pageOfText(TextSearch.terms(query)));
+            updateButtons();
+        }
     }
 
     private void goBack() {
@@ -874,6 +1023,7 @@ public class BookScreen extends Screen {
                     switch (hit.target()) {
                         case NAV_BACK -> goBack();
                         case NAV_CONTENTS -> go(null);
+                        case NAV_SEARCH -> openSearch();
                         default -> go(hit.target());
                     }
                     return true;
@@ -900,6 +1050,21 @@ public class BookScreen extends Screen {
 
     @Override
     public boolean keyPressed(int key, int scanCode, int modifiers) {
+        // while typing a search, keys are text (Enter opens the first entry found); Escape still closes the book
+        if (searchBox != null && searchBox.visible && getFocused() == searchBox && key != GLFW.GLFW_KEY_ESCAPE) {
+            if (key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER) {
+                if (!results.isEmpty()) {
+                    go(results.getFirst().entry().id());
+                }
+            } else {
+                searchBox.keyPressed(key, scanCode, modifiers);
+            }
+            return true;
+        }
+        if (key == GLFW.GLFW_KEY_F && hasControlDown() && isManual()) {
+            openSearch();
+            return true;
+        }
         // through the buttons, for their page-turn sound; a hidden button means there's no page that way
         if (key == GLFW.GLFW_KEY_LEFT || key == GLFW.GLFW_KEY_PAGE_UP) {
             if (back.visible) {
@@ -950,7 +1115,7 @@ public class BookScreen extends Screen {
 
     // ---- drawing ----
 
-    private static final String NAV_BACK = "\u0000back", NAV_CONTENTS = "\u0000contents";
+    private static final String NAV_BACK = "\u0000back", NAV_CONTENTS = "\u0000contents", NAV_SEARCH = "\u0000search";
 
     /** the book is drawn as the background, so the page buttons sit on top of it */
     @Override
@@ -984,15 +1149,22 @@ public class BookScreen extends Screen {
         }
     }
 
-    /** Back and Contents, above the book */
+    /** Back on the left, Search and Contents on the right, above the book */
     private void drawNav(GuiGraphics g, int mouseX, int mouseY) {
         int y = bookY - LINE_H;
         if (!history.isEmpty()) {
             navLabel(g, Component.translatable("gottschbooks.book.back"), bookX + 4, y, NAV_BACK, mouseX, mouseY);
         }
+        int right = bookX + bookW - 4;
         if (entry != null) {
             Component contents = Component.translatable("gottschbooks.book.contents");
-            navLabel(g, contents, bookX + bookW - 4 - font.width(contents), y, NAV_CONTENTS, mouseX, mouseY);
+            right -= font.width(contents);
+            navLabel(g, contents, right, y, NAV_CONTENTS, mouseX, mouseY);
+            right -= 12;
+        }
+        if (!SEARCH.equals(entry)) {
+            Component search = Component.translatable("gottschbooks.book.search");
+            navLabel(g, search, right - font.width(search), y, NAV_SEARCH, mouseX, mouseY);
         }
     }
 
@@ -1032,6 +1204,11 @@ public class BookScreen extends Screen {
                 case TABLE_HEADER, TABLE_ROW -> drawTableRow(g, line, x, y);
                 case CATEGORY -> drawRow(g, line, x, y, true, mouseX, mouseY);
                 case LINK_ROW -> drawRow(g, line, x, y, false, mouseX, mouseY);
+                case SEARCH_BOX -> {
+                    // the search box's frame: a faint shade with an ink outline, like a recipe's slots
+                    g.fill(x, y, x + textW, y + SEARCH_BOX_H, 0x18000000);
+                    g.renderOutline(x, y, textW, SEARCH_BOX_H, NOTE & 0x80FFFFFF);
+                }
                 case BLANK, BREAK -> { }
             }
             y += line.height;

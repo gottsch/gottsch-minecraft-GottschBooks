@@ -91,8 +91,13 @@ dependencies {
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
-// the parser's unit tests use Minecraft's text classes
-neoForge.addModdingDependenciesTo(sourceSets.test)
+// unit tests run inside a loaded game (FML, the registries, this mod), so they can use items and components
+neoForge {
+    unitTest {
+        enable()
+        testedMod = mods."${mod_id}"
+    }
+}
 
 tasks.named('test', Test) {
     useJUnitPlatform()

@@ -23,7 +23,9 @@ import mod.gottsch.neo.gottschbooks.GottschBooks;
 import mod.gottsch.neo.gottschbooks.api.BookItem;
 import mod.gottsch.neo.gottschbooks.api.Books;
 import mod.gottsch.neo.gottschbooks.api.client.GottschBooksClient;
+import mod.gottsch.neo.gottschbooks.core.ItemMatch;
 import mod.gottsch.neo.gottschbooks.core.text.Block;
+import mod.gottsch.neo.gottschbooks.core.text.ItemReference;
 import net.minecraft.ChatFormatting;
 import net.minecraft.Util;
 import net.minecraft.client.KeyMapping;
@@ -32,6 +34,7 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.ChatScreen;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.core.component.DataComponentPatch;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
@@ -56,7 +59,6 @@ import org.jetbrains.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -75,7 +77,13 @@ import java.util.Set;
  * <p>
  * An entry explains an item when it has a {@code spotlight} of it, a {@code recipe} that makes it, the item as its
  * {@code icon}, or the item (or a {@code #tag} holding it) in its {@code items:} front matter; in that order of
- * preference when several entries could answer, then by book and contents order.
+ * preference when several entries could answer, then by book and contents order. {@code lookup_from: items} (on the
+ * entry, or in book.md for every entry) makes an entry answer only for its {@code items:}, so its icon and
+ * spotlights can be just for show; {@code lookup_from: none} makes it answer for nothing.
+ * <p>
+ * A reference written with components ({@code minecraft:filled_map[custom_data={D2DungeonMap:{}}]}) answers only
+ * for stacks that have them (see {@link ItemMatch#matches}), and comes before any entry for the plain item, so a
+ * manual can explain one kind of map apart from maps in general. A plain id answers for every stack of the item.
  *
  * @author Mark Gottschling on 10/27/2026
  */
@@ -85,6 +93,9 @@ public final class ItemLookup {
     static final String LOOKUP = "lookup", CARRIED = "carried", ALWAYS = "always", NEVER = "never";
     /** an entry's front matter list of the items it explains, beyond its spotlights, recipes and icon */
     static final String ITEMS = "items";
+    /** an entry's (or book.md's, for every entry) key for what the entry answers lookups for, and its values */
+    static final String LOOKUP_FROM = ItemMatch.LOOKUP_FROM, FROM_ALL = ItemMatch.FROM_ALL, FROM_ITEMS = ItemMatch.FROM_ITEMS,
+            FROM_NONE = ItemMatch.FROM_NONE;
 
     public static final KeyMapping KEY = new KeyMapping("key.gottschbooks.lookup", KeyConflictContext.GUI,
             InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_B, "key.categories.gottschbooks");
@@ -92,8 +103,15 @@ public final class ItemLookup {
     /** how an entry shows an item, best first */
     private enum Rank { SPOTLIGHT, RECIPE, ICON, LISTED }
 
-    /** an entry that explains an item */
-    record Hit(ResourceLocation book, Manual manual, Manual.Entry entry, Rank rank) {}
+    /** an entry that explains an item: any stack of it, or only stacks with {@code components} */
+    record Hit(ResourceLocation book, Manual manual, Manual.Entry entry, Rank rank, DataComponentPatch components) {
+        boolean specific() {
+            return !components.isEmpty();
+        }
+    }
+
+    /** an item an entry shows: any stack of it, or only stacks with {@code components} */
+    record Shown(Item item, DataComponentPatch components) {}
 
     /** a tooltip drawn this long ago still counts as the item under the mouse when the key is pressed */
     private static final long TOOLTIP_MILLIS = 250;
@@ -126,6 +144,7 @@ public final class ItemLookup {
         }
         Set<ResourceLocation> carried = carried(player.getInventory());
         return hits.stream()
+                .filter(hit -> ItemMatch.matches(hit.components(), stack))
                 .filter(hit -> hit.entry().unlocked())
                 .filter(hit -> carried.contains(hit.book()) || lookup(hit.book()).equals(ALWAYS))
                 .findFirst();
@@ -176,28 +195,47 @@ public final class ItemLookup {
         for (LoadedBook book : manuals) {
             Manual manual = Manual.of(book, locale);
             for (Manual.Entry entry : manual.allEntries()) {
+                String from = lookupFrom(book, entry);
+                if (from.equals(FROM_NONE)) {
+                    continue;
+                }
                 // the entry's best rank for each item it shows
-                Map<Item, Rank> shown = new HashMap<>();
-                spotlightsAndRecipes(entry.text().blocks(), level, shown);
-                Icons.stack(entry.icon()).ifPresent(stack -> shown.putIfAbsent(stack.getItem(), Rank.ICON));
+                Map<Shown, Rank> shown = new HashMap<>();
+                if (from.equals(FROM_ALL)) {
+                    spotlightsAndRecipes(entry.text().blocks(), level, shown);
+                    shown(entry.icon()).ifPresent(item -> shown.putIfAbsent(item, Rank.ICON));
+                }
                 entry.text().get(ITEMS).ifPresent(items -> listed(items).forEach(item -> shown.putIfAbsent(item, Rank.LISTED)));
-                shown.remove(Items.AIR);
-                shown.forEach((item, rank) -> built.computeIfAbsent(item, k -> new ArrayList<>())
-                        .add(new Hit(book.id(), manual, entry, rank)));
+                shown.keySet().removeIf(item -> item.item() == Items.AIR);
+                shown.forEach((item, rank) -> built.computeIfAbsent(item.item(), k -> new ArrayList<>())
+                        .add(new Hit(book.id(), manual, entry, rank, item.components())));
             }
         }
-        // stable, so book and contents order break ties
-        built.values().forEach(hits -> hits.sort(Comparator.comparing(Hit::rank)));
+        // an entry for stacks with certain components before one for any stack of the item, then by rank; stable, so
+        // book and contents order break ties
+        built.values().forEach(hits -> hits.sort(Comparator.comparing((Hit hit) -> !hit.specific()).thenComparing(Hit::rank)));
         return built;
     }
 
-    private static void spotlightsAndRecipes(List<Block> blocks, @Nullable Level level, Map<Item, Rank> shown) {
+    /** what {@code entry} answers lookups for: its {@code lookup_from:}, else book.md's, else everything it shows */
+    static String lookupFrom(LoadedBook book, Manual.Entry entry) {
+        return ItemMatch.lookupFrom(entry.text().get(LOOKUP_FROM), book.meta().get(LOOKUP_FROM));
+    }
+
+    /** the item {@code reference} names, with the components it is written with; none written: any stack of it */
+    static Optional<Shown> shown(String reference) {
+        return ItemReference.parse(reference).flatMap(ref -> Icons.stack(ref).map(stack -> new Shown(stack.getItem(),
+                ref.components().isEmpty() ? DataComponentPatch.EMPTY : stack.getComponentsPatch())));
+    }
+
+    private static void spotlightsAndRecipes(List<Block> blocks, @Nullable Level level, Map<Shown, Rank> shown) {
         for (Block block : blocks) {
             if (block instanceof Block.Fence fence) {
                 if (fence.kind().equals("spotlight")) {
-                    Icons.stack(fence.argument()).ifPresent(stack -> shown.merge(stack.getItem(), Rank.SPOTLIGHT, ItemLookup::better));
+                    shown(fence.argument()).ifPresent(item -> shown.merge(item, Rank.SPOTLIGHT, ItemLookup::better));
                 } else if (fence.kind().equals("recipe") && level != null) {
-                    recipeResult(fence.argument(), level).ifPresent(stack -> shown.merge(stack.getItem(), Rank.RECIPE, ItemLookup::better));
+                    recipeResult(fence.argument(), level).ifPresent(stack ->
+                            shown.merge(new Shown(stack.getItem(), DataComponentPatch.EMPTY), Rank.RECIPE, ItemLookup::better));
                 }
                 spotlightsAndRecipes(fence.body(), level, shown);
             }
@@ -219,7 +257,7 @@ public final class ItemLookup {
 
     /** {@code items:}'s item references and {@code #tags}, separated by commas or spaces */
     static List<String> tokens(String items) {
-        return Arrays.stream(items.split("[,\\s]+")).filter(token -> !token.isEmpty()).toList();
+        return ItemReference.split(items);
     }
 
     /** the items {@code #ns:tag} holds; empty when it isn't a tag the game has */
@@ -229,13 +267,13 @@ public final class ItemLookup {
                 .map(set -> set.stream().map(holder -> holder.value()).toList());
     }
 
-    private static List<Item> listed(String items) {
-        List<Item> list = new ArrayList<>();
+    private static List<Shown> listed(String items) {
+        List<Shown> list = new ArrayList<>();
         for (String token : tokens(items)) {
             if (token.startsWith("#")) {
-                tag(token).ifPresent(list::addAll);
+                tag(token).ifPresent(tagged -> tagged.forEach(item -> list.add(new Shown(item, DataComponentPatch.EMPTY))));
             } else {
-                Icons.stack(token).ifPresent(stack -> list.add(stack.getItem()));
+                shown(token).ifPresent(list::add);
             }
         }
         return list;
@@ -295,7 +333,7 @@ public final class ItemLookup {
         }
         Optional<Hit> hit = find(tooltipStack, minecraft.player);
         if (hit.isPresent()) {
-            GottschBooksClient.open(hit.get().book(), hit.get().entry().id(), tooltipStack.getItem());
+            GottschBooksClient.open(hit.get().book(), hit.get().entry().id(), tooltipStack.copy());
             event.setCanceled(true);
         }
     }

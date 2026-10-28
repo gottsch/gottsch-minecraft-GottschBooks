@@ -87,7 +87,7 @@ Everything for one book lives under `assets/<namespace>/books/<book>/`. The book
 
 ```
 assets/<ns>/books/<book>/
-├── book.md                     mode: manual (required), icon, skin, pages, lookup
+├── book.md                     mode: manual (required), icon, skin, pages, lookup, lookup_from
 └── en_us/
     ├── _index.md               the manual's title and its landing text (shown above the contents)
     ├── categories/
@@ -147,14 +147,16 @@ A file may start with `key: value` lines between two `---` lines.
 | `sort` | categories, entries | a whole number; lower comes first. Use 10, 20, 30 ... so the person can insert things later |
 | `category` | entries | the id of a category file (`basics` for `categories/basics.md`). Every entry needs one that exists |
 | `advancement` | entries | an advancement id; the entry stays hidden until the player has it. Only with a real id |
-| `items` | entries | the items the entry explains in plain text, beyond its spotlights, recipes and icon: item ids and `#ns:tag` item tags, separated by commas, in double quotes: `items: "mymod:wrench, #mymod:wrenches"`. Only real ids |
+| `items` | entries | the items the entry explains in plain text, beyond its spotlights, recipes and icon: item ids and `#ns:tag` item tags, separated by commas, in double quotes: `items: "mymod:wrench, #mymod:wrenches"`. Only real ids. An id written with components answers only for stacks that have them; use that only when the person says how their item is told apart |
+| `lookup_from` | entries, book.md | leave it out (the entry answers for everything it shows). `items` when the entry's icon or spotlights are only for show, such as a vanilla torch on a lighting entry; then list what it explains in `items:`. `none` for an entry that explains no item |
 
 An entry's title comes from `title:`. Don't also start the entry with a `# Title` heading.
 
 **Item lookup.** A player hovering over an item in their inventory can press a key to open the entry that explains
 it. An entry explains an item when it has a `spotlight` of it, a `recipe` that makes it, the item as its `icon`, or
 the item in `items:`. So every important item should have one entry that spotlights it; use `items:` for items an
-entry covers only in its text (the tiers of a tool, say).
+entry covers only in its text (the tiers of a tool, say). In a manual about a mod, don't give an entry a vanilla
+icon it doesn't explain without `lookup_from: items`: the icon would send every one of that vanilla item to it.
 
 ---
 
@@ -401,7 +403,8 @@ title: Widgets
 - **Check these ids:** every recipe id, and any id you inferred rather than were given.
 - **Assumptions:** the loader, the namespace, the defaults you used.
 - **Next steps:** put the files in place, run the game, press F3+T to reload, and run `/gottschbooks check <book>`.
-  It lists every missing item, recipe or link, and every malformed table, file by file.
+  It lists every missing item, recipe or link, and every malformed table, file by file. Ask them to click **[Copy]**
+  after its summary and paste the report back to you.
 
 ## Features by version
 
@@ -414,6 +417,7 @@ Use a feature only if the person's Gottsch Books version has it:
 | `{font:...}` | 1.1.0 |
 | tables, `{page}`, `{page:single}`, `{page:spread}`, `pages:`, recipe layouts for furnaces, stonecutters and smithing, `/gottschbooks check` | 1.2.0 |
 | `items:`, `lookup:` (item lookup) | 1.3.0 |
+| `lookup_from:`, components in `items:` | 1.3.0 |
 | `announce_on_first_join` | 1.3.0 |
 
 Before 1.2.0, a page break is written `<!-- page -->` (1.2.0 and later read it too).
