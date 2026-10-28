@@ -55,6 +55,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - It also reports `items:` values that aren't items or tags, unknown `lookup:` and `lookup_from:` values,
   `lookup_from: items` without `items:`, and a vanilla icon that answers lookups in a mod's manual when the entry
   shows that item nowhere else.
+- **Checking books in your build:** `BookLint` checks the books under one or more resource roots without the game
+  (links, anchors, categories, front matter values, unknown blocks, tables, `_index.md` / `text.md`, item
+  references that don't parse) and exits with 1 when it finds anything, so a `JavaExec` task can fail a build or
+  CI. WRITING.md has the Gradle task. Whether items, recipes and fonts exist is still checked in game.
 
 #### For mod developers
 - `GottschBooksClient.open(book, entry, stack)`: opens an entry on the page that shows a stack (a spotlight of that
