@@ -43,7 +43,8 @@ import java.util.Optional;
 
 /**
  * {@code /gottschbooks check [book]}: lists what is wrong in every loaded book, or in one, in chat and in the log.
- * Books are client assets, resource packs included, so the check runs on the client, for anyone. It shares its root
+ * Books are client assets, resource packs included, so the check runs on the client, for anyone.
+ * {@code /gottschbooks lookup hint [on|off]} shows or hides the item lookup's tooltip line. These share their root
  * with the server's {@code /gottschbooks open}; NeoForge hands the server anything the client tree doesn't know.
  *
  * @author Mark Gottschling on 10/27/2026
@@ -74,7 +75,28 @@ public final class ClientCommands {
                                         return 0;
                                     }
                                     return check(c.getSource(), List.of(book.get()));
-                                }))));
+                                })))
+                .then(Commands.literal("lookup")
+                        .then(Commands.literal("hint")
+                                .executes(c -> hint(c.getSource()))
+                                .then(Commands.literal("on").executes(c -> hint(c.getSource(), true)))
+                                .then(Commands.literal("off").executes(c -> hint(c.getSource(), false))))));
+    }
+
+    /** turns the item lookup's tooltip line on or off, saved to the client config */
+    private static int hint(CommandSourceStack source, boolean show) {
+        ClientConfig.LOOKUP_HINT.set(show);
+        ClientConfig.LOOKUP_HINT.save();
+        return hint(source);
+    }
+
+    /** says whether the item lookup's tooltip line is showing */
+    private static int hint(CommandSourceStack source) {
+        boolean show = ClientConfig.LOOKUP_HINT.get();
+        source.sendSuccess(() -> show
+                ? Component.translatable("gottschbooks.command.lookup.hint.on")
+                : Component.translatable("gottschbooks.command.lookup.hint.off", ItemLookup.KEY.getTranslatedKeyMessage()), false);
+        return show ? 1 : 0;
     }
 
     private static int check(CommandSourceStack source, Collection<LoadedBook> books) {

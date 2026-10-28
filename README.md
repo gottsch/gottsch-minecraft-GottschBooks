@@ -118,5 +118,5 @@ jar:
   entry locked behind the *Diamonds!* advancement.
 - `example:mistakes`: a manual that is wrong on purpose, for `/gottschbooks check example:mistakes` to find.
 
-The first two are given on first join. They are also a working reference for [WRITING.md](WRITING.md), and the source of the
+The journal is given on first join, and the field guide is announced in chat with a [Get it] link. They are also a working reference for [WRITING.md](WRITING.md), and the source of the
 mod page's screenshots.

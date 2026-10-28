@@ -46,6 +46,8 @@ players' hands, use the library's own item, `gottschbooks:book`, which opens wha
 ```
 
 - **Give it on first join:** `"give_on_first_join": true` in the book's [server entry](#the-book-on-the-server).
+- **Announce it on first join:** `"announce_on_first_join": true` tells each player once, in chat, with a
+  [Get it](#announcing-a-book-instead-of-giving-it) link, instead of giving it.
 - **Put it in loot:** a loot table entry for `gottschbooks:book` with a `set_components` function setting
   `"gottschbooks:book": "mymod:guide"` (on 1.20.1, `set_nbt` with `{"gottschbooks:book":"mymod:guide"}`).
 - **Name it:** a lang line `"book.mymod.guide": "My Guide"` in your resource pack, or on the stack (`item_name` on
@@ -398,6 +400,8 @@ that shows the item. Closing the book goes back to the inventory. The key is **L
 Controls; the line shows whatever it is bound to, and unbinding it removes the line. The line is one line at most (a
 long title is cut short), and is left out while SHIFT is held, which many mods use for a long detail view; the key
 works either way.
+Players who no longer need the line can hide it with `/gottschbooks lookup hint off` (or `lookupHint = false` in
+`config/gottschbooks-client.toml`) and still press the key; `/gottschbooks lookup hint on` brings it back.
 
 An entry explains an item when it has:
 
@@ -431,6 +435,7 @@ The text is a client asset, so the server only knows a book exists if it has a *
   "disabled": false,
   "track_reading": true,
   "give_on_first_join": false,
+  "announce_on_first_join": false,
   "item": "gottschbooks:book"
 }
 ```
@@ -440,7 +445,28 @@ The text is a client asset, so the server only knows a book exists if it has a *
 | `disabled` | `false` | switch the book off: it's no longer tracked, counted or given (a pack can do this to your book) |
 | `track_reading` | `true` | reading it is recorded and counts for the advancement trigger below. Set `false` for a manual |
 | `give_on_first_join` | `false` | each player gets the book once, the first time they join after the entry exists (so a book added to a running world reaches existing players too) |
+| `announce_on_first_join` | `false` | instead of giving the book, tell each player about it once, in chat, with a **[Get it]** link (see below). Ignored when `give_on_first_join` is on |
 | `item` | `gottschbooks:book` | the item given: any `BookItem`, such as your mod's own manual item |
+
+### Announcing a book instead of giving it
+
+Many players don't want a stack of manuals pushed into their inventory, but they can't use a manual they don't know
+about. `"announce_on_first_join": true` tells each player once, on their first join after the entry exists:
+
+> **A Field Guide to the Overworld** is available. **[Get it]**
+
+Clicking **[Get it]** runs `/gottschbooks get <book>`, which any player may use, operator or not, for a book whose
+entry gives or announces it on first join (so a player who lost a given book can get another). A player who
+already carries the book isn't told. To word the line yourself, say where else the book comes from, add a lang line
+`book.<namespace>.<path>.announce`, with `%s` for the book's name; the link is added after it:
+
+```json
+"book.mymod.manual.announce": "%s is in the Tools tab, or craft one from a book and a bone."
+```
+
+A server owner can turn every announcement off with `announceBooks = false` in the world's
+`serverconfig/gottschbooks-server.toml`. That only silences announcements; books given on first join are still
+given.
 
 With an entry, reading the book from a `BookItem` records it for the player and fires the
 `gottschbooks:book_read` advancement trigger:
@@ -514,8 +540,8 @@ An empty result leaves the picture out; an exception is logged and never breaks 
 ## Tips and gotchas
 
 - **A manual's server entry should say `"track_reading": false`.** Otherwise reading the manual counts toward
-  `all_in` and "read any book" advancements meant for your lore books. Without `give_on_first_join` a manual needs
-  no entry at all.
+  `all_in` and "read any book" advancements meant for your lore books. Without `give_on_first_join` or
+  `announce_on_first_join` a manual needs no entry at all.
 - **Item names are lang keys, not book text.** The server can't read assets, so a book's item name comes from
   `book.<namespace>.<path>` in a language file (or the stack's own name), not from the book's `title:`.
 - **Skins:** `cover.png` and `page.png` are 32x32 nine-slices (8 px border on the cover, 5 px on the page; edges

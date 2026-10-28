@@ -1,4 +1,5 @@
 {
   "book.example.journal": "The Lighthouse Keeper's Journal",
-  "book.example.field_guide": "A Field Guide to the Overworld"
+  "book.example.field_guide": "A Field Guide to the Overworld",
+  "book.example.field_guide.announce": "%s explains the Overworld's tools and blocks."
 }

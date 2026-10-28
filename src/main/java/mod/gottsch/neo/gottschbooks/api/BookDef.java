@@ -28,27 +28,41 @@ import java.util.Optional;
  * {@code data/<namespace>/gottschbooks/book/<book>.json}. The words and art are client assets
  * ({@code assets/<namespace>/books/<book>/}); this entry is what the server needs: read tracking for the
  * {@code gottschbooks:book_read} advancement trigger, book tags ({@code data/<namespace>/tags/gottschbooks/book/}),
- * and giving the book to new players. Every field is optional: {@code {}} is a whole entry.
+ * and giving the book to new players, or telling them about it. Every field is optional: {@code {}} is a whole entry.
  *
  * @param disabled        a pack can switch a book off: it is no longer tracked, counted or given
  * @param trackReading    reading it is recorded and fires {@code book_read}, and it counts toward "every book"
  *                        conditions; set false for a manual, so it doesn't count with the lore books
  * @param giveOnFirstJoin each player gets the book once, the first time they join after the entry exists
  * @param item            the item given: a {@code BookItem}, default {@code gottschbooks:book}
+ * @param announceOnFirstJoin each player is told about the book once, in chat, with a link that gives it to them
+ *                        ({@code /gottschbooks get}); ignored when the book is given on first join
  *
  * @author Mark Gottschling on 10/17/2026
  */
-public record BookDef(boolean disabled, boolean trackReading, boolean giveOnFirstJoin, Optional<ResourceLocation> item) {
+public record BookDef(boolean disabled, boolean trackReading, boolean giveOnFirstJoin, Optional<ResourceLocation> item,
+                      boolean announceOnFirstJoin) {
 
     public static final Codec<BookDef> CODEC = RecordCodecBuilder.create(instance -> instance.group(
             Codec.BOOL.optionalFieldOf("disabled", false).forGetter(BookDef::disabled),
             Codec.BOOL.optionalFieldOf("track_reading", true).forGetter(BookDef::trackReading),
             Codec.BOOL.optionalFieldOf("give_on_first_join", false).forGetter(BookDef::giveOnFirstJoin),
-            ResourceLocation.CODEC.optionalFieldOf("item").forGetter(BookDef::item)
+            ResourceLocation.CODEC.optionalFieldOf("item").forGetter(BookDef::item),
+            Codec.BOOL.optionalFieldOf("announce_on_first_join", false).forGetter(BookDef::announceOnFirstJoin)
     ).apply(instance, BookDef::new));
+
+    /** the 1.0 entry, not announced */
+    public BookDef(boolean disabled, boolean trackReading, boolean giveOnFirstJoin, Optional<ResourceLocation> item) {
+        this(disabled, trackReading, giveOnFirstJoin, item, false);
+    }
 
     /** whether reading it is recorded and counted */
     public boolean tracked() {
         return !disabled && trackReading;
+    }
+
+    /** whether any player may take the book with {@code /gottschbooks get}: it is given or announced on first join */
+    public boolean free() {
+        return !disabled && (giveOnFirstJoin || announceOnFirstJoin);
     }
 }
