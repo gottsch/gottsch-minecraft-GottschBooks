@@ -29,6 +29,8 @@ public final class ClientConfig {
     public static final ModConfigSpec SPEC;
     /** whether item tooltips get the item lookup line; the lookup key works either way */
     public static final ModConfigSpec.BooleanValue LOOKUP_HINT;
+    /** whether the item lookup line goes away for an item once its entry has been opened */
+    public static final ModConfigSpec.BooleanValue LOOKUP_HINT_UNTIL_READ;
 
     static {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
@@ -36,6 +38,10 @@ public final class ClientConfig {
                 .comment("Show the item lookup line (\"[B] Manual\") in item tooltips.",
                         "The lookup key still opens the manual when this is off. Also set with /gottschbooks lookup hint on|off.")
                 .define("lookupHint", true);
+        LOOKUP_HINT_UNTIL_READ = builder
+                .comment("Stop showing the item lookup line for an item once you have opened the manual entry that explains it.",
+                        "The lookup key still opens the entry.")
+                .define("lookupHintUntilRead", true);
         SPEC = builder.build();
     }
 

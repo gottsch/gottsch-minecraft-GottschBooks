@@ -3,6 +3,8 @@
   "gottschbooks.book.missing": "This book's text is missing: %s",
   "gottschbooks.book.back": "< Back",
   "gottschbooks.book.contents": "Contents",
+  "gottschbooks.book.new": "New entries: %s",
+  "gottschbooks.book.mark_read": "Mark all read",
   "gottschbooks.book.search": "Search",
   "gottschbooks.search": "Search this manual",
   "gottschbooks.search.hint": "Search this manual",

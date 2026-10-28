@@ -68,7 +68,9 @@ import java.util.Optional;
  *     <li><b>Manual</b> ({@link Manual}): opens on the contents (the landing text, then each category's entries);
  *     a click opens an entry, {@code [text](entry:id#anchor)} links jump between entries, and Back and Contents sit
  *     above the book. Entries can show {@code spotlight}, {@code recipe}, {@code image} and {@code entity}
- *     blocks. Search (above the book, or Ctrl+F) finds the entries that mention every word typed.</li>
+ *     blocks. Search (above the book, or Ctrl+F) finds the entries that mention every word typed. Entries the
+ *     player hasn't opened yet ({@link ReadingLog}) have a red dot on the contents, as do their categories, and the
+ *     contents counts them with a "mark all read" link.</li>
  * </ul>
  * Moved from Magic Treasures' {@code LoreBookScreen}.
  *
@@ -81,6 +83,8 @@ public class BookScreen extends Screen {
     private static final int INK = 0xFF3B2A1A;
     private static final int NOTE = 0xFF7A6650;
     private static final int LINK = 0xFF1E4FA0;
+    /** the dot after an entry the player hasn't opened yet, and the room it takes */
+    private static final int NEW_MARK = 0xFFB03A2E, NEW_MARK_ROOM = 8;
     private static final int SLOT = 0x30000000;
     private static final int LINE_H = 10;
     private static final int ROW_H = 18;
@@ -198,6 +202,8 @@ public class BookScreen extends Screen {
         /** a table header or row: its table, and which row (-1 for the header) */
         TableView table;
         int row;
+        /** a contents row for an entry not yet opened, or a category holding one */
+        boolean fresh;
 
         Line(Kind kind, int height, int section) {
             this.kind = kind;
@@ -330,6 +336,7 @@ public class BookScreen extends Screen {
         headingScale2 = (float) (Math.max(1, Math.round(1.25 * guiScale)) / guiScale);
 
         paginate();
+        markOpened();
         if (pendingAnchor != null) {
             view = viewOf(pageOfAnchor(pendingAnchor));
             pendingAnchor = null;
@@ -627,9 +634,20 @@ public class BookScreen extends Screen {
         return flow.lines;
     }
 
-    /** a manual's opening: its title, the landing text, then each category with its entries */
+    /**
+     * a manual's opening: its title, how many entries are new (with a link marking them all read), the landing text,
+     * then each category with its entries
+     */
     private void contents(Flow flow) {
         flow.add(Kind.TITLE, titleHeight(title, false));
+        int unread = unread().size();
+        if (unread > 0) {
+            Component markRead = Component.translatable("gottschbooks.book.mark_read").withStyle(style -> style
+                    .withColor(LINK & 0xFFFFFF).withUnderlined(true)
+                    .withClickEvent(new ClickEvent(ClickEvent.Action.CHANGE_PAGE, MARK_READ)));
+            flow.text(Component.translatable("gottschbooks.book.new", unread).append("  ").append(markRead), NOTE, null);
+            flow.textBefore = true;
+        }
         flow.blocks(manual.landing());
         for (Manual.Category category : manual.categories()) {
             List<Manual.Entry> entries = manual.entriesIn(category.id());
@@ -639,6 +657,7 @@ public class BookScreen extends Screen {
             flow.blank();
             Line heading = flow.add(Kind.CATEGORY, ROW_H + 2);
             heading.label = category.title();
+            heading.fresh = entries.stream().anyMatch(entry -> !ReadingLog.isOpened(bookId, entry.id()));
             heading.item = Icons.stack(category.icon()).orElse(ItemStack.EMPTY);
             heading.keep = ROW_H;
             flow.textBefore = false;
@@ -660,7 +679,21 @@ public class BookScreen extends Screen {
         row.label = entry.title();
         row.item = Icons.stack(entry.icon()).orElse(ItemStack.EMPTY);
         row.target = entry.id();
+        row.fresh = !ReadingLog.isOpened(bookId, entry.id());
         return row;
+    }
+
+    /** the entries the player can read but hasn't opened */
+    private List<Manual.Entry> unread() {
+        return manual.allEntries().stream().filter(Manual.Entry::unlocked)
+                .filter(entry -> !ReadingLog.isOpened(bookId, entry.id())).toList();
+    }
+
+    /** records the entry on show as read */
+    private void markOpened() {
+        if (isManual() && entry != null && !SEARCH.equals(entry)) {
+            ReadingLog.open(bookId, entry);
+        }
     }
 
     /**
@@ -1000,6 +1033,7 @@ public class BookScreen extends Screen {
     private void show(@Nullable String to, @Nullable String anchor, int atView) {
         entry = to;
         paginate();
+        markOpened();
         view = anchor != null ? viewOf(pageOfAnchor(anchor)) : Math.max(0, Math.min(atView, lastView()));
         updateButtons();
         minecraft.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.BOOK_PAGE_TURN, 1.0F));
@@ -1007,6 +1041,14 @@ public class BookScreen extends Screen {
 
     @Override
     public boolean handleComponentClicked(@Nullable Style style) {
+        if (style != null && style.getClickEvent() != null && style.getClickEvent().getAction() == ClickEvent.Action.CHANGE_PAGE
+                && style.getClickEvent().getValue().equals(MARK_READ) && isManual()) {
+            ReadingLog.openAll(bookId, unread().stream().map(Manual.Entry::id).toList());
+            paginate();
+            view = Math.min(view, lastView());
+            updateButtons();
+            return true;
+        }
         if (style != null && style.getClickEvent() != null && style.getClickEvent().getAction() == ClickEvent.Action.CHANGE_PAGE
                 && style.getClickEvent().getValue().startsWith(Inline.ENTRY_LINK)) {
             go(style.getClickEvent().getValue().substring(Inline.ENTRY_LINK.length()));
@@ -1115,6 +1157,8 @@ public class BookScreen extends Screen {
 
     // ---- drawing ----
 
+    /** the click value of the contents' "mark all read" link */
+    private static final String MARK_READ = "\u0000mark_read";
     private static final String NAV_BACK = "\u0000back", NAV_CONTENTS = "\u0000contents", NAV_SEARCH = "\u0000search";
 
     /** the book is drawn as the background, so the page buttons sit on top of it */
@@ -1333,13 +1377,19 @@ public class BookScreen extends Screen {
         } else {
             label = Component.empty().withStyle(ChatFormatting.BOLD).append(label);
         }
-        String shown = font.plainSubstrByWidth(label.getString(), textW - (textX - x));
+        String shown = font.plainSubstrByWidth(label.getString(), textW - (textX - x) - (line.fresh ? NEW_MARK_ROOM : 0));
         Component text = Component.literal(shown).withStyle(label.getStyle());
         if (hover) {
             text = text.copy().withStyle(ChatFormatting.UNDERLINE);
         }
-        drawText(g, (heading ? Component.empty().withStyle(ChatFormatting.BOLD).append(shown) : text).getVisualOrderText(),
-                textX, y + (ROW_H - 8) / 2 + 1, hover ? LINK : INK);
+        Component drawn = heading ? Component.empty().withStyle(ChatFormatting.BOLD).append(shown) : text;
+        drawText(g, drawn.getVisualOrderText(), textX, y + (ROW_H - 8) / 2 + 1, hover ? LINK : INK);
+        if (line.fresh) {
+            // a small round dot after the name
+            int dx = textX + font.width(drawn) + 3, dy = y + ROW_H / 2 - 1;
+            g.fill(dx + 1, dy, dx + 3, dy + 4, NEW_MARK);
+            g.fill(dx, dy + 1, dx + 4, dy + 3, NEW_MARK);
+        }
     }
 
     private void drawIllustration(GuiGraphics g, Line line, int x, int y) {
