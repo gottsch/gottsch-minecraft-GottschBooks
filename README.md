@@ -13,6 +13,8 @@ Books are pure data: a resource pack and a datapack can add one, and the library
 **To write books, see [WRITING.md](WRITING.md):** the file layout, front matter, the Markdown subset, pictures,
 spotlights and recipes, links, advancements, and how to depend on the library.
 
+**To have an AI write them,** see [Writing books with an AI](#writing-books-with-an-ai).
+
 A taste of a lore book (`assets/<ns>/books/<book>/en_us/text.md`):
 
 ```markdown
@@ -29,6 +31,44 @@ The first section. *Italic*, **bold**, {dark_aqua}colour{}.
 
 The second section, after an ornament.
 ```
+
+## Writing books with an AI
+
+[AI-INSTRUCTIONS.md](AI-INSTRUCTIONS.md) teaches an AI the book format, so it can turn your mod's docs or wiki into a
+whole manual (or write a lore book). It works in any chat AI, free plans included: claude.ai, ChatGPT, Gemini and
+others.
+
+Players and pack makers don't need this repo: each release on CurseForge and Modrinth has an **AI kit**
+(`gottschbooks-ai-kit-<version>.zip`) as an additional file, holding the instructions, both scripts and a plain-text
+how-to. `./gradlew aiKit` builds it (it is also built with the jar, into `build/libs`).
+
+1. **Start a chat** and attach (or paste) `AI-INSTRUCTIONS.md`, your docs, and a list of your item and recipe ids
+   (your `en_us.json` lang file and recipe folder will do). Say what you want: "a manual for my mod, for Forge
+   1.20.1". It asks for anything it still needs.
+2. **Ask for the outline first**, the categories and entries, and fix it before any files are written. Then ask for
+   one category per reply ("write the Machines category"), so no reply gets cut off. Free plans limit replies and
+   messages, so a big manual may take a couple of sessions.
+3. **Save each reply** as a text file (copy the whole reply into `answer1.txt`, `answer2.txt`...), then let a script
+   write the files into place:
+
+   ```
+   python tools/split-book.py answer1.txt answer2.txt --out path/to/src/main/resources
+   ```
+
+   On Windows without Python, the same in PowerShell:
+
+   ```
+   powershell -ExecutionPolicy Bypass -File tools\split-book.ps1 answer1.txt answer2.txt -Out path\to\src\main\resources
+   ```
+
+   Add `--dry-run` (`-DryRun`) to see the list first. The scripts only write under `assets/` and `data/` in the
+   folder you give, and flag any file that looks cut off. For a modpack without a mod, point `--out` at your
+   resource pack, then move the `data/` folder into your data pack.
+4. **Check it in game:** press F3+T and run `/gottschbooks check`. Paste anything it reports back into the chat
+   for the AI to fix.
+
+The AI lists every place it needed an id it didn't have, rather than making one up. In Claude Code the instructions
+also work as a skill: save the file as `.claude/skills/gottschbooks-author/SKILL.md`.
 
 ## Using it from another mod
 
