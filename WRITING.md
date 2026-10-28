@@ -179,7 +179,7 @@ ignored.
 | `icon` | book.md | the manual's icon on its contents page, when it isn't opened from an item |
 | `lookup` | book.md | when the manual answers [item lookups](#item-lookup): `carried` (the default) while the player carries it, `always`, or `never` |
 | `lookup_from` | book.md, entries | what an entry answers [item lookups](#item-lookup) for: `all` it shows (the default), only its `items`, or `none`. An entry's setting wins over book.md's |
-| `skin` | book.md | a texture folder (`mymod:textures/gui/my_book`) holding `cover.png`, `page.png` and `ornament.png`; see [Tips](#tips-and-gotchas) |
+| `skin` | book.md | a texture folder (`mymod:textures/gui/my_book`) holding `cover.png`, `page.png` and `ornament.png`; see [Skins](#skins) |
 | `pages` | book.md, entries | the [page style](#page-styles) the text starts in: `single` for one wide page, `spread` (the default) for two side by side. An entry's setting wins over book.md's |
 | `title` | text.md, _index.md, categories, entries | the title. For a lore book, a leading `# Heading` works too |
 | `author` | text.md | shown under the title as "by ..." |
@@ -393,6 +393,34 @@ Read more [on the wiki](https://example.com/wiki).
   contents page.
 - A `[text]` that isn't followed by a link target is just text, so `[brackets]` in prose are safe.
 
+## Skins
+
+Every book can have its own look: a leather cover for a field manual, sea-blue for a ship's log, black and silver for
+a necromancer's grimoire. Put three textures in a folder of your resource pack and name the folder in book.md:
+
+```markdown
+---
+mode: manual
+skin: mymod:textures/gui/my_book
+---
+```
+
+| File | Size | What it draws |
+|---|---|---|
+| `cover.png` | 32x32 | the cover around the pages, and the gutter between them |
+| `page.png` | 32x32 | each page |
+| `ornament.png` | 21x5 | the flourish between `---` sections |
+
+`cover.png` and `page.png` are nine-slices: the corners are drawn as they are, and the edges and middle are tiled (never
+stretched) to fit any window. The cover keeps an 8-pixel border and the page a 5-pixel one, so draw the frame within
+those borders and keep the middle a pattern that tiles. The text keeps its own ink colours, so keep the pages light.
+
+The easiest start is a copy of the default skin, `assets/gottschbooks/textures/gui/book/` in the Gottsch Books jar,
+recoloured. The example *Lighthouse Keeper's Journal* does just that, in sea blue
+(`src/example/resources/assets/example/textures/gui/sea_book/`). Without `skin:` the default is drawn. A skin needs
+all three files: a missing one shows as Minecraft's purple-and-black missing texture, and `/gottschbooks check` names
+it.
+
 ## Search
 
 Every manual has **Search** above the book (or Ctrl+F). The player types, and the search page lists the entries
@@ -595,9 +623,7 @@ An empty result leaves the picture out; an exception is logged and never breaks 
   `announce_on_first_join` a manual needs no entry at all.
 - **Item names are lang keys, not book text.** The server can't read assets, so a book's item name comes from
   `book.<namespace>.<path>` in a language file (or the stack's own name), not from the book's `title:`.
-- **Skins:** `cover.png` and `page.png` are 32x32 nine-slices (8 px border on the cover, 5 px on the page; edges
-  and centre are tiled, never stretched). `ornament.png` is 21x5. The default skin is in
-  `assets/gottschbooks/textures/gui/book/`.
+- **Skins:** a book's own cover, page and ornament textures; see [Skins](#skins).
 - **Escaping:** text that starts a line with `#`, `>`, `-`, `1.` or `![`, or uses `*` or `{` literally, needs a `\`
   in front.
 - **Lists carry on:** a plain line straight after a list item joins that item. Leave a blank line to start a new

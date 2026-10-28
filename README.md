@@ -116,7 +116,7 @@ anything breaking is 2.0.
 jar:
 
 - `example:journal`: a lore book, *The Lighthouse Keeper's Journal*. It shows illustrations, ornaments, a spotlight,
-  an image and a table.
+  an image, a table, and its own skin, a sea-blue recolour of the default.
 - `example:field_guide`: a manual, *A Field Guide to the Overworld*. It shows headings, lists, colours, notes, links,
   spotlights, recipes of every vanilla kind (*Furnaces and Workstations*), tables with item icons on a single wide
   page (*Ores at a Glance*), mobs, an image, items with NBT and a picture font (*Potions and Curios*), and an entry
