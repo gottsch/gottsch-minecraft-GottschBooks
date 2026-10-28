@@ -23,8 +23,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `/gottschbooks get <book>`: any player takes a book whose entry gives or announces it on first join, unless they
   already carry it. `/gottschbooks open` is still for operators only.
 - `BookDef.announceOnFirstJoin()` and `BookDef.free()`; the four-argument constructor still works.
-- `GottschBooksClient.open(book, entry, item)`: opens an entry on the page that shows an item.
-- `/gottschbooks check` reports `items:` values that aren't items or tags, and unknown `lookup:` values.
+- Manual search: **Search** above the book (or Ctrl+F) lists the entries that mention every word typed, with a
+  line of each around the word. A result opens on the page with the word; Back returns to the results. Titles,
+  text, tables, captions and spotlighted items' names are searched; locked entries never show.
+- `lookup_from:` (entries, or book.md for every entry): `items` answers lookups only for the entry's `items:`, so an
+  icon or spotlight can be just for show; `none` answers for nothing; `all` (the default) for everything shown.
+- Item lookups match on NBT: an item written with them (`items: minecraft:filled_map{D2DungeonMap:{}}`) answers only for stacks that
+  have them, NBT (as a subset of the stack's), and comes before any entry for the plain item.
+- `GottschBooksClient.open(book, entry, stack)`: opens an entry on the page that shows a stack (a spotlight of that
+  very kind first).
+- `/gottschbooks check` writes every problem to `logs/gottschbooks-check.txt`, grouped by file, and chat links to it:
+  **[Open report]** opens it, **[Copy]** copies it whole. Chat now shows the first 10 problems.
+- `/gottschbooks check` reports `items:` values that aren't items or tags, unknown `lookup:` and `lookup_from:`
+  values, `lookup_from: items` without `items:`, and a vanilla icon that answers lookups in a mod's manual when the
+  entry shows that item nowhere else.
 
 ## [1.2.0] - Unreleased
 

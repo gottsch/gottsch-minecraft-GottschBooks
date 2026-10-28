@@ -3,6 +3,7 @@ title: Errors
 category: nowhere
 icon: minecraft:not_an_item
 pages: wide
+lookup_from: icons
 items: minecraft:not_an_item, #minecraft:not_a_tag
 ---
 

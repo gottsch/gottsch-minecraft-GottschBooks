@@ -17,10 +17,13 @@
  */
 package mod.gottsch.forge.gottschbooks.client;
 
+import mod.gottsch.forge.gottschbooks.core.ItemMatch;
 import mod.gottsch.forge.gottschbooks.core.text.Block;
 import mod.gottsch.forge.gottschbooks.core.text.BookText;
 import mod.gottsch.forge.gottschbooks.core.text.Inline;
+import mod.gottsch.forge.gottschbooks.core.text.ItemReference;
 import net.minecraft.client.Minecraft;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.Style;
@@ -29,6 +32,7 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.level.Level;
 
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -46,6 +50,9 @@ import java.util.stream.Collectors;
  * aren't there, fonts that aren't, entries in a category that doesn't exist, and fenced blocks the reader doesn't
  * know. For {@code /gottschbooks check}, so an author finds them all at once instead of page by page. Needs a world,
  * since recipes, mobs and many components belong to it.
+ * <p>
+ * It also points out a vanilla item used as an entry's icon in a manual about a mod's items, when the entry doesn't
+ * otherwise show the item: such an icon is usually for show, yet it answers item lookups for every one of that item.
  *
  * @author Mark Gottschling on 10/27/2026
  */
@@ -61,6 +68,11 @@ public final class BookCheck {
     private final LoadedBook book;
     private final Level level;
     private final List<Problem> problems = new ArrayList<>();
+    /** entries already told about a vanilla icon, so each is told once, not once per language */
+    private final Set<String> iconsTold = new HashSet<>();
+    /** whether the book shows items that aren't vanilla's (a mod's manual), worked out on first need */
+    @Nullable
+    private Boolean modded;
     private final Map<ResourceLocation, Boolean> resources = new HashMap<>();
     private String file;
 
@@ -95,6 +107,7 @@ public final class BookCheck {
         book.meta().get(ItemLookup.LOOKUP).map(String::strip)
                 .filter(value -> !List.of(ItemLookup.CARRIED, ItemLookup.ALWAYS, ItemLookup.NEVER).contains(value.toLowerCase(Locale.ROOT)))
                 .ifPresent(value -> problem("lookup '" + value + "' isn't carried, always or never, so the manual answers item lookups only when carried"));
+        lookupFrom(book.meta());
         if (book.isManual()) {
             if (!book.entries().containsKey(Manual.INDEX)) {
                 problem("manual has no " + Manual.INDEX + ".md, so its title is its id and it has no landing text");
@@ -120,8 +133,100 @@ public final class BookCheck {
             text.get("advancement").filter(id -> ResourceLocation.tryParse(id) == null).ifPresent(id ->
                     problem("advancement '" + id + "' isn't a resource location, so the entry is never hidden"));
             text.get(ItemLookup.ITEMS).ifPresent(this::items);
+            lookupFrom(text);
+            if (text.get(ItemLookup.LOOKUP_FROM).map(value -> value.strip().equalsIgnoreCase(ItemLookup.FROM_ITEMS)).orElse(false)
+                    && text.get(ItemLookup.ITEMS).isEmpty()) {
+                problem("lookup_from: items, but no items:, so the entry answers no item lookups (lookup_from: none says so plainly)");
+            }
+            vanillaIcon(entry, text);
         }
         blocks(text.blocks(), locale);
+    }
+
+    /** {@code lookup_from:} is {@code all}, {@code items} or {@code none} */
+    private void lookupFrom(BookText text) {
+        text.get(ItemLookup.LOOKUP_FROM).map(String::strip)
+                .filter(value -> !List.of(ItemLookup.FROM_ALL, ItemLookup.FROM_ITEMS, ItemLookup.FROM_NONE).contains(value.toLowerCase(Locale.ROOT)))
+                .ifPresent(value -> problem("lookup_from '" + value + "' isn't all, items or none, so it is taken as all"));
+    }
+
+    /**
+     * a vanilla icon that answers lookups in a mod's manual, though the entry shows the item nowhere else: a torch on
+     * "Bring Light" sends every torch in the game to the entry
+     */
+    private void vanillaIcon(String entry, BookText text) {
+        Optional<ItemReference> icon = text.get("icon").flatMap(ItemReference::parse)
+                .filter(ref -> ref.scheme().equals(ItemReference.ITEM) && ref.nbt().isEmpty()
+                        && ref.id().getNamespace().equals(ResourceLocation.DEFAULT_NAMESPACE));
+        String from = ItemMatch.lookupFrom(text.get(ItemLookup.LOOKUP_FROM), book.meta().get(ItemLookup.LOOKUP_FROM));
+        boolean answers = book.meta().get(ItemLookup.LOOKUP).map(value -> !value.strip().equalsIgnoreCase(ItemLookup.NEVER)).orElse(true)
+                && !from.equals(ItemLookup.FROM_ITEMS) && !from.equals(ItemLookup.FROM_NONE);
+        if (icon.isEmpty() || !answers || !modded() || shows(text, icon.get().id()) || !iconsTold.add(entry)) {
+            return;
+        }
+        ResourceLocation id = icon.get().id();
+        problem("icon " + id + " answers item lookups, so every " + id.getPath() + " in the game names this manual;"
+                + " if the icon is only for show, add lookup_from: items (the entry then answers only for its items:)");
+    }
+
+    /** whether the entry shows {@code item} besides as its icon: a spotlight, a recipe's result, or in {@code items:} */
+    private boolean shows(BookText text, ResourceLocation item) {
+        if (shows(text.blocks(), item)) {
+            return true;
+        }
+        for (String token : text.get(ItemLookup.ITEMS).map(ItemLookup::tokens).orElse(List.of())) {
+            boolean listed = token.startsWith("#")
+                    ? ItemLookup.tag(token).map(items -> items.stream().anyMatch(i -> item.equals(BuiltInRegistries.ITEM.getKey(i)))).orElse(false)
+                    : ItemReference.parse(token).map(ref -> ref.id().equals(item)).orElse(false);
+            if (listed) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean shows(List<Block> blocks, ResourceLocation item) {
+        for (Block block : blocks) {
+            if (block instanceof Block.Fence fence) {
+                boolean shown = switch (fence.kind()) {
+                    case "spotlight" -> ItemReference.parse(fence.argument()).map(ref -> ref.id().equals(item)).orElse(false);
+                    case "recipe" -> ItemLookup.recipeResult(fence.argument(), level)
+                            .map(stack -> item.equals(BuiltInRegistries.ITEM.getKey(stack.getItem()))).orElse(false);
+                    default -> false;
+                };
+                if (shown || shows(fence.body(), item)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /** whether any icon, spotlight or {@code items:} reference in the book is outside the minecraft namespace */
+    private boolean modded() {
+        if (modded == null) {
+            modded = book.entries().values().stream().flatMap(byLocale -> byLocale.values().stream()).anyMatch(text -> {
+                List<String> refs = new ArrayList<>();
+                text.get("icon").ifPresent(refs::add);
+                text.get(ItemLookup.ITEMS).map(ItemLookup::tokens).ifPresent(tokens -> tokens.stream()
+                        .filter(token -> !token.startsWith("#")).forEach(refs::add));
+                spotlights(text.blocks(), refs);
+                return refs.stream().flatMap(ref -> ItemReference.parse(ref).stream())
+                        .anyMatch(ref -> !ref.id().getNamespace().equals(ResourceLocation.DEFAULT_NAMESPACE));
+            });
+        }
+        return modded;
+    }
+
+    private static void spotlights(List<Block> blocks, List<String> into) {
+        for (Block block : blocks) {
+            if (block instanceof Block.Fence fence) {
+                if (fence.kind().equals("spotlight")) {
+                    into.add(fence.argument());
+                }
+                spotlights(fence.body(), into);
+            }
+        }
     }
 
     /** each of {@code items:}'s references is an item, and each {@code #tag} a tag the game has */

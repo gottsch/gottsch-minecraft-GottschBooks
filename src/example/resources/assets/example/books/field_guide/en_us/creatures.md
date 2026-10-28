@@ -2,6 +2,7 @@
 title: Creatures
 category: nature
 icon: minecraft:sweet_berries
+lookup_from: none   # the berries are only a picture
 sort: 1
 ---
 

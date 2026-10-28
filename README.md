@@ -65,7 +65,7 @@ how-to. `./gradlew aiKit` builds it (it is also built with the jar, into `build/
    folder you give, and flag any file that looks cut off. For a modpack without a mod, point `--out` at your
    resource pack, then move the `data/` folder into your data pack.
 4. **Check it in game:** press F3+T and run `/gottschbooks check`. Paste anything it reports back into the chat
-   for the AI to fix.
+   for the AI to fix: click **[Copy]** after the summary to copy the whole report.
 
 The AI lists every place it needed an id it didn't have, rather than making one up. In Claude Code the instructions
 also work as a skill: save the file as `.claude/skills/gottschbooks-author/SKILL.md`.

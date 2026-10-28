@@ -67,15 +67,15 @@ public final class GottschBooksClient {
     }
 
     /**
-     * Opens manual {@code book} at {@code entry}, on the page that shows {@code item} (its spotlight, else a recipe
-     * that makes it), else the entry's first page. Closing the book goes back to the screen that was open, such as
-     * the inventory the item was in.
+     * Opens manual {@code book} at {@code entry}, on the page that shows {@code item} (a spotlight of it written with
+     * NBT it has, else a spotlight of the item, else a recipe that makes it), else the entry's first page.
+     * Closing the book goes back to the screen that was open, such as the inventory the item was in.
      */
-    public static boolean open(ResourceLocation book, String entry, Item item) {
+    public static boolean open(ResourceLocation book, String entry, ItemStack item) {
         return open(book, Optional.empty(), Optional.of(entry), Optional.of(item));
     }
 
-    private static boolean open(ResourceLocation book, Optional<ItemStack> icon, Optional<String> entry, Optional<Item> item) {
+    private static boolean open(ResourceLocation book, Optional<ItemStack> icon, Optional<String> entry, Optional<ItemStack> item) {
         Minecraft minecraft = Minecraft.getInstance();
         String locale = minecraft.getLanguageManager().getSelected();
         Optional<LoadedBook> loaded = BookLoader.get(book);

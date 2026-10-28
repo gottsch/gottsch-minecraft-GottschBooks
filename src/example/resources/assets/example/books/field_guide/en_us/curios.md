@@ -2,6 +2,7 @@
 title: Potions and Curios
 category: basics
 icon: minecraft:potion{Potion:"minecraft:swiftness"}
+items: minecraft:potion{Potion:"minecraft:healing"}
 sort: 9
 ---
 

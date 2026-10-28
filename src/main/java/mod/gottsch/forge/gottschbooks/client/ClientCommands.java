@@ -28,6 +28,7 @@ import net.minecraft.commands.arguments.ResourceLocationArgument;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
+import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.Level;
 import net.minecraftforge.api.distmarker.Dist;
@@ -35,15 +36,24 @@ import net.minecraftforge.client.event.RegisterClientCommandsEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
- * {@code /gottschbooks check [book]}: lists what is wrong in every loaded book, or in one, in chat and in the log.
- * Books are client assets, resource packs included, so the check runs on the client, for anyone.
+ * {@code /gottschbooks check [book]}: lists what is wrong in every loaded book, or in one: the first few in chat, and
+ * all of them in the log and in a report, {@code logs/gottschbooks-check.txt}, grouped by file, which chat links to
+ * (open it, or copy it whole). Books are client assets, resource packs included, so the check runs on the client, for
+ * anyone.
  * {@code /gottschbooks lookup hint [on|off]} shows or hides the item lookup's tooltip line. These share their root
  * with the server's {@code /gottschbooks open}; Forge hands the server anything the client tree doesn't know.
  *
@@ -51,8 +61,10 @@ import java.util.Optional;
  */
 @Mod.EventBusSubscriber(modid = GottschBooks.MOD_ID, value = Dist.CLIENT)
 public final class ClientCommands {
-    /** problems shown in chat; the log gets them all */
-    private static final int CHAT_LIMIT = 30;
+    /** problems shown in chat; the log and the report get them all */
+    private static final int CHAT_LIMIT = 10;
+    /** the report, under the game folder; each check replaces it */
+    private static final String REPORT = "logs/gottschbooks-check.txt";
 
     private ClientCommands() {}
 
@@ -125,8 +137,62 @@ public final class ClientCommands {
                 ? Component.translatable("gottschbooks.command.check.clean", books.size()).withStyle(ChatFormatting.GREEN)
                 : Component.translatable("gottschbooks.command.check.problems", books.size(), problems.size())
                         .withStyle(ChatFormatting.YELLOW);
-        source.sendSuccess(() -> summary, false);
+        // written even when clean, so an old report never outlives its fixes
+        String report = report(books, problems);
+        Path file = Minecraft.getInstance().gameDirectory.toPath().resolve(REPORT);
+        boolean saved = save(file, report);
+        if (problems.isEmpty()) {
+            source.sendSuccess(() -> summary, false);
+        } else {
+            MutableComponent line = Component.empty().append(summary);
+            if (saved) {
+                line.append(" ").append(link("gottschbooks.command.check.open", ClickEvent.Action.OPEN_FILE,
+                        file.toAbsolutePath().toString(), Component.literal(file.toAbsolutePath().toString())));
+            }
+            line.append(" ").append(link("gottschbooks.command.check.copy", ClickEvent.Action.COPY_TO_CLIPBOARD, report,
+                    Component.translatable("gottschbooks.command.check.copy.hover")));
+            source.sendSuccess(() -> line, false);
+        }
+        if (!saved) {
+            source.sendFailure(Component.translatable("gottschbooks.command.check.unsaved", REPORT));
+        }
         return problems.size();
+    }
+
+    /** "[label]" in green, doing {@code action} with {@code value} when clicked */
+    private static Component link(String label, ClickEvent.Action action, String value, Component hover) {
+        return Component.translatable(label).withStyle(style -> style.withColor(ChatFormatting.GREEN)
+                .withClickEvent(new ClickEvent(action, value))
+                .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, hover)));
+    }
+
+    /** every problem, grouped under its file, after a heading naming the books checked */
+    static String report(Collection<LoadedBook> books, List<BookCheck.Problem> problems) {
+        StringBuilder report = new StringBuilder("Gottsch Books check, ")
+                .append(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS).toString().replace('T', ' ')).append('\n');
+        report.append("Books: ").append(books.stream().map(book -> book.id().toString()).sorted()
+                .collect(Collectors.joining(", "))).append('\n');
+        report.append(books.size()).append(" book(s), ").append(problems.size()).append(" problem(s)\n");
+        String file = null;
+        for (BookCheck.Problem problem : problems) {
+            if (!problem.file().equals(file)) {
+                file = problem.file();
+                report.append('\n').append(file).append('\n');
+            }
+            report.append("  - ").append(problem.message()).append('\n');
+        }
+        return report.toString();
+    }
+
+    private static boolean save(Path file, String report) {
+        try {
+            Files.createDirectories(file.getParent());
+            Files.writeString(file, report, StandardCharsets.UTF_8);
+            return true;
+        } catch (IOException e) {
+            GottschBooks.LOGGER.warn("couldn't write the check report {}", file, e);
+            return false;
+        }
     }
 
     /** the file (click to copy its path) and what is wrong */

@@ -29,7 +29,7 @@ page written for an AI, with the rules that keep it from inventing ids or using 
 |---|---|---|
 | Text | one file, read front to back | many entries, in categories |
 | Opens on | a title page: icon, title, author | the contents: landing text, then each category's entries |
-| Getting around | turning pages | clicking entries, links, Back, Contents |
+| Getting around | turning pages | clicking entries, links, Back, Contents, Search |
 | Extras | illustrations, spotlights, recipes, images, mobs | the same, plus entries locked behind advancements |
 
 Both flow their text onto as many pages as the window needs, one or two pages at a time, so no text runs off a page
@@ -178,6 +178,7 @@ ignored.
 | `mode` | book.md | `manual`; anything else (or no book.md) is a lore book |
 | `icon` | book.md | the manual's icon on its contents page, when it isn't opened from an item |
 | `lookup` | book.md | when the manual answers [item lookups](#item-lookup): `carried` (the default) while the player carries it, `always`, or `never` |
+| `lookup_from` | book.md, entries | what an entry answers [item lookups](#item-lookup) for: `all` it shows (the default), only its `items`, or `none`. An entry's setting wins over book.md's |
 | `skin` | book.md | a texture folder (`mymod:textures/gui/my_book`) holding `cover.png`, `page.png` and `ornament.png`; see [Tips](#tips-and-gotchas) |
 | `pages` | book.md, entries | the [page style](#page-styles) the text starts in: `single` for one wide page, `spread` (the default) for two side by side. An entry's setting wins over book.md's |
 | `title` | text.md, _index.md, categories, entries | the title. For a lore book, a leading `# Heading` works too |
@@ -186,7 +187,7 @@ ignored.
 | `sort` | categories, entries | a number; lower comes first. Ties, and anything without one, sort by title |
 | `category` | entries | a category id (the file name under `categories/`). Entries without a known category are listed last |
 | `advancement` | entries | `ns:id`: the entry stays hidden until the player has this advancement |
-| `items` | entries | items the entry explains, for [item lookups](#item-lookup): item ids and `#ns:tag` item tags, separated by commas |
+| `items` | entries | items the entry explains, for [item lookups](#item-lookup): item ids (with NBT to pick out one kind) and `#ns:tag` item tags, separated by commas |
 
 An `icon` (and a spotlight's item) is either an item id, `minecraft:diamond`, or a picture from an illustration
 scheme, `scheme:namespace:id` (see [Pictures and blocks](#pictures-and-blocks)). An item may carry components, as
@@ -392,6 +393,17 @@ Read more [on the wiki](https://example.com/wiki).
   contents page.
 - A `[text]` that isn't followed by a link target is just text, so `[brackets]` in prose are safe.
 
+## Search
+
+Every manual has **Search** above the book (or Ctrl+F). The player types, and the search page lists the entries
+that mention every word typed, ignoring case, each with a line of its text around the word. Entries whose title has
+the words come first, then those that mention them most. A click (or Enter, for the first) opens the entry on the
+page where the word is, and **Back** returns to the results.
+
+Search reads titles, paragraphs, headings, list items, table cells, captions, and the names of spotlighted and
+illustrated items, in the player's language. Locked entries are never found. There is nothing to write for it, but
+the words players will search for (an item's name, a mob's) are worth having in the text.
+
 ## Item lookup
 
 While a player carries a manual, hovering over an item in any inventory adds a line to its tooltip naming the key
@@ -420,6 +432,35 @@ icon: minecraft:iron_pickaxe
 items: #minecraft:pickaxes, #minecraft:axes, minecraft:shears
 ---
 ```
+
+**An icon only for show.** An entry's icon and spotlights answer lookups too, so a torch on a "Bring Light" entry
+sends every torch in the game to it. `lookup_from: items` makes the entry answer only for what its `items:` lists;
+`lookup_from: none`, for nothing. Put either in book.md to make it every entry's default, and let an entry say
+`lookup_from: all` to answer for everything it shows again:
+
+```markdown
+---
+title: Bring Light
+icon: minecraft:torch
+lookup_from: items
+items: dungeons2:wall_lantern, dungeons2:brazier
+---
+```
+
+`/gottschbooks check` points out a vanilla icon in a manual about a mod's items, when the entry shows that item
+nowhere else.
+
+**One kind of an item.** An id written with NBT answers only for stacks that have them, and comes before any
+entry for the plain item, whatever its rank. So a general *Maps* entry can spotlight `minecraft:filled_map` while a
+*Dungeon Maps* entry answers for the maps a mod marks:
+
+```markdown
+items: minecraft:filled_map{D2DungeonMap:{}}
+```
+
+To match, the hovered stack's NBT must *contain* what is written: the tags listed, with the same values, any others
+ignored (nested compounds the same way; a list matches when the stack's list holds each listed element). A plain id answers for every stack of the item. The same goes for icons and spotlights written with
+NBT, and the key opens the entry at the spotlight of that very kind when it has one.
 
 Locked entries never answer, so a lookup can't give away an entry before its advancement. `lookup: always` in
 book.md answers without the manual in the inventory, which suits a manual opened by a plain item or a command;
@@ -497,8 +538,8 @@ Book tags live at `data/<ns>/tags/gottschbooks/book/<tag>.json` (`{"values": ["m
   the reader; its server side records the read. Any `BookItem` takes its name from the lang key
   `book.<namespace>.<path>` (a `/` in the path becomes `.`) when a language file has it.
 - **Client code:** `GottschBooksClient.open(book)`, `open(book, iconStack)`, `open(book, "entry#anchor")` for a
-  manual, or `open(book, "entry", item)` to open an entry on the page that shows `item` (closing it returns to the
-  screen that was open). Client only: call it from a screen, a keybind or the client branch of `Item#use`.
+  manual, or `open(book, "entry", stack)` to open an entry on the page that shows the stack (closing it returns to
+  the screen that was open). Client only: call it from a screen, a keybind or the client branch of `Item#use`.
 - **A command:** `/gottschbooks open <players> <book> [entry]` (operators). Handy for tutorials and command
   blocks.
 
@@ -569,11 +610,16 @@ It finds:
   book
 - fonts that aren't there
 - entries whose `category` has no `categories/<id>.md`
-- `items:` values that aren't items or item tags, and a `lookup` other than `carried`, `always` or `never`
+- `items:` values that aren't items or item tags, a `lookup` other than `carried`, `always` or `never`, a
+  `lookup_from` other than `all`, `items` or `none`, and `lookup_from: items` with no `items:`
+- a vanilla `icon` in a manual about a mod's items, when the entry shows that item nowhere else, since it answers
+  lookups for every one of that item
 - fenced blocks the reader doesn't know (` ```chart `), which show as plain lines
 - table rows with too few or too many cells, icons after a cell's text, and empty tables
 - a `pages` value, or a `{page:...}` style, other than `single` or `spread`
 - a manual with no `_index.md`, a lore book with no `text.md`, and a `skin` missing any of its three textures
 
-It checks every language a book has. The first 30 problems are shown in chat; click a file to copy its path. Every
-problem goes to the log.
+It checks every language a book has. The first 10 problems are shown in chat; click a file to copy its path. Every
+problem goes to the log and to a report, `logs/gottschbooks-check.txt` in the game folder, grouped by file.
+**[Open report]** after the summary opens it in your text editor, and **[Copy]** copies the whole report, ready
+to paste into an AI chat or an issue. Each check replaces the report.
