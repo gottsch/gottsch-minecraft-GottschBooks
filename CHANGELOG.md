@@ -56,6 +56,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `lookup_from: items` without `items:`, and a vanilla icon that answers lookups in a mod's manual when the entry
   shows that item nowhere else.
 
+#### Languages
+- Korean (`ko_kr`), Japanese (`ja_jp`) and Simplified Chinese (`zh_cn`) translations of Gottsch Books' own strings.
+
 #### For mod developers
 - `GottschBooksClient.open(book, entry, stack)`: opens an entry on the page that shows a stack (a spotlight of that
   very kind first).
