@@ -411,7 +411,10 @@ The most common gem.
 | `spotlight` | an item (components allowed), or `scheme:ns:id` | the item at 2x in a frame, with a tooltip |
 | `recipe` | a recipe id | the recipe laid out for its block (below), and the result. Ingredients that accept several items cycle through them |
 | `image` | `ns:textures/....png`, then optionally `width height` | the image, scaled to fit the page (256x256 assumed without a size) |
-| `entity` | an entity id | the mob, slowly turning |
+| `entity` | an entity id, then optionally a scale above 0 up to 1: `mymod:golem 0.7` | the mob, slowly turning |
+
+An `entity` block sizes the mob by its model, not its hitbox, so antlers, branches or a tall hat fit. A scale, such as
+`0.7`, draws it smaller still, with its feet on the same floor.
 
 Put a `## Heading` right before a block to give it a title: the heading and the block are kept on the same page. If
 the item, recipe, image or mob doesn't exist, the page shows `[recipe ns:id?]` in its place and the log says why.

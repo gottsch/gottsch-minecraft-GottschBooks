@@ -115,6 +115,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   checking and exporting sections cover them; AI-INSTRUCTIONS.md says when and how to split a lore book into
   chapters.
 
+### Fixed
+- A mob whose model is taller than its hitbox (antlers, branches, a hat) no longer draws over the text above its
+  `entity` block: the mob is sized by its model. An optional scale after the id
+  (```` ```entity mymod:golem 0.7 ````, above 0 up to 1) draws it smaller; `/gottschbooks check` and `BookLint` report
+  a bad scale.
+
 ## [1.2.0] - Unreleased
 
 ### Added

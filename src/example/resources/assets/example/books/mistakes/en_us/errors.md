@@ -22,6 +22,9 @@ Dyeing armour works its ingredients out in code, so there is nothing to draw.
 ```entity minecraft:arrow
 ```
 
+```entity minecraft:zombie huge
+```
+
 ```chart
 a fenced block the reader doesn't know
 ```

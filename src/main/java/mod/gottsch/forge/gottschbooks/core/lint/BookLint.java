@@ -19,6 +19,7 @@ package mod.gottsch.forge.gottschbooks.core.lint;
 
 import mod.gottsch.forge.gottschbooks.core.text.Block;
 import mod.gottsch.forge.gottschbooks.core.text.BookText;
+import mod.gottsch.forge.gottschbooks.core.text.EntityArgument;
 import mod.gottsch.forge.gottschbooks.core.text.Inline;
 import mod.gottsch.forge.gottschbooks.core.text.ItemReference;
 import mod.gottsch.forge.gottschbooks.core.text.LoreText;
@@ -291,9 +292,11 @@ public final class BookLint {
                 }
             }
             case "entity" -> {
-                if (ResourceLocation.tryParse(argument) == null || argument.isEmpty()) {
-                    problem("mob '" + argument + "' isn't a resource location");
+                EntityArgument entity = EntityArgument.parse(argument);
+                if (ResourceLocation.tryParse(entity.id()) == null || entity.id().isEmpty()) {
+                    problem("mob '" + entity.id() + "' isn't a resource location");
                 }
+                entity.problem().ifPresent(this::problem);
             }
             default -> {
                 if (!fence.kind().isEmpty() && !FENCES.contains(fence.kind())) {

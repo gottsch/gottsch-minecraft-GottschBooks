@@ -19,4 +19,11 @@ Found in lush caves. An axolotl fights {dark_aqua}drowned{} and {dark_aqua}guard
 in a bucket.
 ```
 
+## The Enderman {#enderman}
+
+```entity minecraft:enderman
+Three blocks tall and quick to anger: don't look one in the eye. It carries blocks off, and drops an {dark_green}ender
+pearl{} when slain.
+```
+
 See also: [A Painting](entry:paintings).
