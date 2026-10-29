@@ -22,6 +22,7 @@ import mod.gottsch.neo.gottschbooks.core.lint.BookLint;
 import mod.gottsch.neo.gottschbooks.core.lint.LintBook;
 import mod.gottsch.neo.gottschbooks.core.text.Block;
 import mod.gottsch.neo.gottschbooks.core.text.BookText;
+import mod.gottsch.neo.gottschbooks.core.text.EntityArgument;
 import mod.gottsch.neo.gottschbooks.core.text.ItemReference;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -255,12 +256,13 @@ public final class BookCheck {
                 }
             }
             case "entity" -> {
-                if (id != null) {
-                    Optional<EntityType<?>> type = EntityType.byString(argument);
+                String mob = EntityArgument.parse(argument).id();
+                if (ResourceLocation.tryParse(mob) != null) {
+                    Optional<EntityType<?>> type = EntityType.byString(mob);
                     if (type.isEmpty()) {
-                        problem("no mob '" + argument + "'");
+                        problem("no mob '" + mob + "'");
                     } else if (!(type.get().create(level) instanceof LivingEntity)) {
-                        problem("'" + argument + "' isn't a mob; entity blocks draw living entities only");
+                        problem("'" + mob + "' isn't a mob; entity blocks draw living entities only");
                     }
                 }
             }

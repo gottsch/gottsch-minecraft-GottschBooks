@@ -254,6 +254,12 @@ class BookLintTest {
 
                 ```entity Minecraft:Zombie
                 ```
+
+                ```entity minecraft:enderman 0.8
+                ```
+
+                ```entity minecraft:enderman 2
+                ```
                 """);
         String a = GUIDE + "en_us/a.md";
         assertHas(problems, a, "icon: 'Not An Item' isn't an item or a picture");
@@ -262,7 +268,8 @@ class BookLintTest {
         assertHas(problems, a, "advancement 'mymod:Story/Root' isn't a resource location");
         assertHas(problems, a, "spotlight: '' isn't an item or a picture");
         assertHas(problems, a, "mob 'Minecraft:Zombie' isn't a resource location");
-        assertEquals(6, problems.size(), problems.toString());
+        assertHas(problems, a, "mob 'minecraft:enderman': scale '2' isn't a number above 0 and at most 1, such as 0.7");
+        assertEquals(7, problems.size(), problems.toString());
     }
 
     @Test
@@ -335,6 +342,7 @@ class BookLintTest {
         assertHas(found, errors, "table: row 2 has 3 cells but the table has 2");
         assertHas(found, errors, "table: row 3 has 1 cells but the table has 2");
         assertHas(found, errors, "only icons at the start of a cell are drawn");
-        assertEquals(11, found.size(), found.toString());
+        assertHas(found, errors, "mob 'minecraft:zombie': scale 'huge' isn't a number");
+        assertEquals(12, found.size(), found.toString());
     }
 }

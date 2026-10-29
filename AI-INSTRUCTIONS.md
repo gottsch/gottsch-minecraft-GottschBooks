@@ -278,7 +278,7 @@ The heart of every machine. It does **everything**.
 | `spotlight` | an item | the item at 2x in a frame, with its tooltip on hover |
 | `recipe` | a recipe id | the recipe as its block shows it (crafting grid, furnace, stonecutter, smithing table, or a mod's machine) and the result |
 | `image` | a full texture path with `.png`, then optionally `width height`: `mymod:textures/gui/map.png 128 64` | the picture, scaled to the page |
-| `entity` | a mob's entity id | the mob, slowly turning |
+| `entity` | a mob's entity id, then optionally a scale above 0 up to 1: `mymod:golem 0.7` | the mob, slowly turning. The mob is sized to fit; add a scale only when the person wants it smaller |
 
 - Put `## A Heading` on the line before a block to title it. The two then stay on the same page.
 - A recipe block with an empty body is fine. Close every block with three backticks.

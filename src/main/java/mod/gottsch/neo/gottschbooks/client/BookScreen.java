@@ -21,6 +21,7 @@ import mod.gottsch.neo.gottschbooks.GottschBooks;
 import mod.gottsch.neo.gottschbooks.core.ItemMatch;
 import mod.gottsch.neo.gottschbooks.core.text.Block;
 import mod.gottsch.neo.gottschbooks.core.text.BookText;
+import mod.gottsch.neo.gottschbooks.core.text.EntityArgument;
 import mod.gottsch.neo.gottschbooks.core.text.Inline;
 import mod.gottsch.neo.gottschbooks.core.text.LoreText;
 import mod.gottsch.neo.gottschbooks.core.text.TextSearch;
@@ -206,12 +207,14 @@ public class BookScreen extends Screen {
         Component label;
         String target;
         String anchor;
-        /** a heading's text scale, and whether a rule goes under it */
+        /** a heading's text scale, and whether a rule goes under it; a mob's scale */
         float scale = 1F;
         boolean rule;
         RecipeView recipe;
         ImageView image;
         LivingEntity entity;
+        /** how far the mob's model reaches, measured when it is first drawn */
+        ModelHeight model;
         /** a table header or row: its table, and which row (-1 for the header) */
         TableView table;
         int row;
@@ -577,12 +580,14 @@ public class BookScreen extends Screen {
                     }
                 }
                 case "entity" -> {
-                    Optional<LivingEntity> entity = entity(fence.argument());
+                    EntityArgument argument = EntityArgument.parse(fence.argument());
+                    Optional<LivingEntity> entity = entity(argument.id());
                     if (entity.isPresent()) {
                         Line line = add(Kind.ENTITY, 70);
                         line.entity = entity.get();
+                        line.scale = argument.scale();
                     } else {
-                        missing("entity", fence.argument());
+                        missing("entity", argument.id());
                     }
                 }
                 default -> { }
@@ -1493,7 +1498,7 @@ public class BookScreen extends Screen {
                 case SPOTLIGHT -> drawSpotlight(g, line, x, y);
                 case RECIPE -> drawRecipe(g, line.recipe, x, y);
                 case IMAGE -> drawImage(g, line.image, x, y);
-                case ENTITY -> drawEntity(g, line.entity, x, y, line.height);
+                case ENTITY -> drawEntity(g, line, x, y);
                 case TABLE_HEADER, TABLE_ROW -> drawTableRow(g, line, x, y);
                 case CATEGORY -> drawRow(g, line, x, y, true, mouseX, mouseY);
                 case LINK_ROW -> drawRow(g, line, x, y, false, mouseX, mouseY);
@@ -1751,13 +1756,24 @@ public class BookScreen extends Screen {
                 image.texW(), image.texH());
     }
 
-    private void drawEntity(GuiGraphics g, LivingEntity entity, int x, int y, int height) {
-        float size = Math.max(entity.getBbHeight(), entity.getBbWidth());
-        int scale = (int) Math.max(8, (height - 14) / Math.max(1F, size));
-        int x1 = x + textW / 2 - 30, x2 = x + textW / 2 + 30;
-        // a slow turn, so the whole mob shows
+    /**
+     * the mob, its model's height (or its width, if wider) filling the line at scale 1 and its lowest point 5 px above
+     * the line's floor; the author's scale shrinks it further
+     */
+    private void drawEntity(GuiGraphics g, Line line, int x, int y) {
+        LivingEntity entity = line.entity;
+        if (line.model == null) {
+            line.model = ModelHeight.of(entity);
+        }
+        float size = Math.max(line.model.span(), entity.getBbWidth());
+        int scale = (int) Math.max(8, (line.height - 14) * line.scale / Math.max(1F, size));
+        int y1 = y + 2, y2 = y + line.height - 2;
+        // the renderer stands the hitbox's middle on the box's middle; this moves it so the model stands on the floor
+        float feet = y2 - 5 + line.model.bottom() * scale - (y1 + y2) / 2F;
+        float yOffset = (feet / scale - entity.getBbHeight() / 2F / entity.getScale());
+        // a slow turn, so the whole mob shows; the box is the line's width, so arms and wings aren't cut
         float angle = (float) Math.sin(System.currentTimeMillis() / 1500.0) * 1.5F;
-        InventoryScreen.renderEntityInInventoryFollowsAngle(g, x1, y + 2, x2, y + height - 2, scale, 0.0625F, angle, 0F, entity);
+        InventoryScreen.renderEntityInInventoryFollowsAngle(g, x, y1, x + textW, y2, scale, yOffset, angle, 0F, entity);
     }
 
     /** the items' tooltips, over everything else */
