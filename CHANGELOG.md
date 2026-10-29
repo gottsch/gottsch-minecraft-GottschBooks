@@ -5,6 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-10-28
+
+### Added
+- Recipe blocks draw each kind of recipe the way its block does: smelting, blasting, smoking and campfire cooking
+  show the input over its furnace with the cooking time; stonecutting shows the stonecutter; smithing shows
+  template, base and addition. Any other recipe, a mod's machine included, shows its ingredients in a row with its
+  station. Before, every recipe was drawn as a crafting grid.
+- `/gottschbooks check [book]`: lists what is wrong in every loaded book (or one) in chat and the log: missing
+  items, recipes, images, mobs and fonts, components that don't parse, broken `entry:` links and anchors, unknown
+  categories and fenced blocks, and missing `_index.md`, `text.md` or skin textures. Runs on the client, for anyone.
+- Tables: GitHub-style pipe tables, with per-column alignment. A cell may start with item icons (`![](item:ns:id)`,
+  components allowed), drawn at 16 px with tooltips. Columns share the page by how much text they hold, rows never
+  split across pages, and a table that continues on the next page repeats its header. A blank header row draws no
+  header. `\|` is a literal pipe.
+- Page styles: one *single* page as wide as the book, for wide tables, or the usual two side by side (*spread*).
+  `{page:single}` and `{page:spread}` on a line of their own break the page and switch the style until the next one;
+  `pages: single` in book.md or an entry's front matter sets the style the text starts in. Pages pair up afresh after
+  each switch.
+- `{page}` breaks the page, in the same braces as colours and fonts. `<!-- page -->` still works.
+- `/gottschbooks check` also reports table rows with the wrong number of cells, icons after a cell's text, empty
+  tables, and `pages` values and `{page:...}` styles other than `single` and `spread`.
+- Example books: *Furnaces and Workstations* and *Ores at a Glance* (two pages of prose, then a single wide page of
+  tables with icons, then two pages again) in the field guide, a tide table in the journal, and `example:mistakes`, a manual that is wrong on purpose for the check to
+  find.
+- AI-INSTRUCTIONS.md: instructions for an AI to write a whole book from a mod's or pack's own docs, in any chat
+  AI (free plans included) or as a Claude Code skill: the files, the exact syntax, rules against invented ids,
+  working in reply-sized parts, and a report of what to check. `tools/split-book.py` (and `split-book.ps1` for
+  Windows without Python) write the files from the saved replies. README: *Writing books with an AI*.
+- The AI kit, `gottschbooks-ai-kit-<version>.zip`: the instructions, both scripts and a plain-text how-to, built by
+  `./gradlew aiKit` (and with the jar) to upload next to each release.
+
+### Changed
+- A line of text with glyphs taller than a line, such as a font of large pictures, grows to fit them instead of
+  overlapping the lines around it. Text with no such glyphs lays out exactly as before. Headings keep their height.
+  The field guide's *Potions and Curios* shows two double-size pictures.
+- Bold text (`**bold**`, `#` to `######` headings, category names on the contents) is thickened by half a glyph pixel
+  instead of vanilla's whole one, which filled in the gaps of letters such as *m* and *w*. Letters sit where they
+  did, so pages wrap as before.
+- A recipe with nothing to draw (its ingredients worked out in code, such as dyeing armour) shows as missing instead
+  of an empty grid.
+
 ## [1.1.0] - 2026-10-26
 
 ### Added
