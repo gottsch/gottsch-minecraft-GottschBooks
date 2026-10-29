@@ -4,5 +4,10 @@
   "gottschbooks.book.back": "< Back",
   "gottschbooks.book.contents": "Contents",
   "gottschbooks.command.open": "Opened %s for %s player(s)",
+  "gottschbooks.command.check.clean": "Checked %s book(s): no problems",
+  "gottschbooks.command.check.problems": "Checked %s book(s): %s problem(s)",
+  "gottschbooks.command.check.more": "...and %s more, all listed in the log",
+  "gottschbooks.command.check.missing": "No book %s",
+  "gottschbooks.recipe.time": "%ss",
   "item.gottschbooks.book": "Book"
 }

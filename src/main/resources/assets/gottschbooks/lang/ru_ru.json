@@ -4,5 +4,10 @@
   "gottschbooks.book.back": "< Назад",
   "gottschbooks.book.contents": "Содержание",
   "gottschbooks.command.open": "Открыта книга %s для игроков: %s",
+  "gottschbooks.command.check.clean": "Проверено книг: %s, проблем нет",
+  "gottschbooks.command.check.problems": "Проверено книг: %s, проблем: %s",
+  "gottschbooks.command.check.more": "...и ещё %s, все они в журнале",
+  "gottschbooks.command.check.missing": "Книга %s не найдена",
+  "gottschbooks.recipe.time": "%s с",
   "item.gottschbooks.book": "Книга"
 }
