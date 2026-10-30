@@ -65,10 +65,15 @@ how-to. `./gradlew aiKit` builds it (it is also built with the jar, into `build/
    folder you give, and flag any file that looks cut off. For a modpack without a mod, point `--out` at your
    resource pack, then move the `data/` folder into your data pack.
 4. **Check it in game:** press F3+T and run `/gottschbooks check`. Paste anything it reports back into the chat
-   for the AI to fix.
+   for the AI to fix: click **[Copy]** after the summary to copy the whole report.
 
 The AI lists every place it needed an id it didn't have, rather than making one up. In Claude Code the instructions
 also work as a skill: save the file as `.claude/skills/gottschbooks-author/SKILL.md`.
+
+## Publishing a book on the web
+
+`./gradlew exportBook` turns a manual or lore book into static web pages, as HTML or as GitHub wiki Markdown, so the
+same text can be your mod's wiki or mod-page content. See [Exporting a book](WRITING.md#exporting-a-book).
 
 ## Using it from another mod
 
@@ -116,12 +121,12 @@ anything breaking is 2.0.
 jar:
 
 - `example:journal`: a lore book, *The Lighthouse Keeper's Journal*. It shows illustrations, ornaments, a spotlight,
-  an image and a table.
+  an image, a table, and its own skin, a sea-blue recolour of the default.
 - `example:field_guide`: a manual, *A Field Guide to the Overworld*. It shows headings, lists, colours, notes, links,
   spotlights, recipes of every vanilla kind (*Furnaces and Workstations*), tables with item icons on a single wide
   page (*Ores at a Glance*), mobs, an image, items with NBT and a picture font (*Potions and Curios*), and an entry
   locked behind the *Diamonds!* advancement.
 - `example:mistakes`: a manual that is wrong on purpose, for `/gottschbooks check example:mistakes` to find.
 
-The first two are given on first join, and are a working reference for [WRITING.md](WRITING.md). They match the
+The journal is given on first join and the field guide is announced in chat with a [Get it] link. Both are a working reference for [WRITING.md](WRITING.md). They match the
 NeoForge 1.21.1 repo's, except that items use 1.20.1 NBT in place of components.

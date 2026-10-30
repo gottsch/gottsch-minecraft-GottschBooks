@@ -19,6 +19,7 @@ package mod.gottsch.forge.gottschbooks.client;
 
 import mod.gottsch.forge.gottschbooks.GottschBooks;
 import mod.gottsch.forge.gottschbooks.core.text.BookText;
+import mod.gottsch.forge.gottschbooks.core.text.LoreText;
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.Map;
@@ -36,8 +37,8 @@ import java.util.Optional;
  */
 public record LoadedBook(ResourceLocation id, BookText meta, Map<String, Map<String, BookText>> entries) {
     public static final String FALLBACK_LOCALE = "en_us";
-    /** a lore book's one entry: {@code <locale>/text.md} */
-    public static final String LORE_ENTRY = "text";
+    /** a lore book's opening (or only) entry: {@code <locale>/text.md}; chapters may follow it ({@link LoreText}) */
+    public static final String LORE_ENTRY = LoreText.TEXT;
     public static final ResourceLocation DEFAULT_SKIN =
             new ResourceLocation(GottschBooks.MOD_ID, "textures/gui/book");
 
@@ -52,6 +53,14 @@ public record LoadedBook(ResourceLocation id, BookText meta, Map<String, Map<Str
             text = byLocale.get(FALLBACK_LOCALE);
         }
         return Optional.ofNullable(text != null ? text : byLocale.values().iterator().next());
+    }
+
+    /**
+     * a lore book's text in {@code locale}: {@code text.md}, then its chapters, each file in {@code locale}, else in
+     * {@code en_us}, else in whatever locale has it; empty when the book has neither
+     */
+    public Optional<LoreText> lore(String locale) {
+        return LoreText.of(meta, entries.keySet(), name -> entry(name, locale));
     }
 
     /** a manual ({@code mode: manual} in book.md), rather than a lore book */

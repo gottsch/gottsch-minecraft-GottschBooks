@@ -3,6 +3,7 @@ title: Tools
 category: basics
 icon: minecraft:iron_pickaxe
 sort: 2
+items: #minecraft:pickaxes, #minecraft:axes, #minecraft:shovels, #minecraft:hoes, #minecraft:swords
 ---
 
 Every tool comes in five materials: *wood*, *stone*, *iron*, *gold* and *diamond*. Better materials dig faster and

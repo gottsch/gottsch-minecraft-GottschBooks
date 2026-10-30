@@ -3,6 +3,8 @@ title: Errors
 category: nowhere
 icon: minecraft:not_an_item
 pages: wide
+lookup_from: icons
+items: minecraft:not_an_item, #minecraft:not_a_tag
 ---
 
 ![A potion with broken NBT](item:minecraft:potion{Potion:})
@@ -18,6 +20,9 @@ Dyeing armour works its ingredients out in code, so there is nothing to draw.
 ```
 
 ```entity minecraft:arrow
+```
+
+```entity minecraft:zombie huge
 ```
 
 ```chart

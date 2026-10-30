@@ -117,6 +117,16 @@ class BookParserTest {
     }
 
     @Test
+    void itemTagsAreNotComments() {
+        BookText book = BookParser.parse("""
+                ---
+                items: #minecraft:pickaxes, #minecraft:axes minecraft:shears # tools
+                ---
+                """);
+        assertEquals("#minecraft:pickaxes, #minecraft:axes minecraft:shears", book.front().get("items"));
+    }
+
+    @Test
     void noFrontMatter() {
         BookText book = BookParser.parse("Just text.\n");
         assertTrue(book.front().isEmpty());

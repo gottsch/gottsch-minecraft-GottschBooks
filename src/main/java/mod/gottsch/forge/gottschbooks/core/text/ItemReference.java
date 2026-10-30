@@ -19,6 +19,8 @@ package mod.gottsch.forge.gottschbooks.core.text;
 
 import net.minecraft.resources.ResourceLocation;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -48,6 +50,46 @@ public record ItemReference(String scheme, ResourceLocation id, String nbt) {
         String scheme = second > 0 ? head.substring(0, first) : ITEM;
         ResourceLocation id = ResourceLocation.tryParse(second > 0 ? head.substring(first + 1) : head);
         return id == null ? Optional.empty() : Optional.of(new ItemReference(scheme, id, nbt));
+    }
+
+    /**
+     * A list of references (and {@code #tags}) separated by commas or spaces, as in {@code items:}. Separators inside
+     * brackets, braces or quotes belong to a reference's components, so
+     * {@code minecraft:filled_map[custom_data={a:1, b:2}], #minecraft:axes} is two tokens.
+     */
+    public static List<String> split(String list) {
+        List<String> tokens = new ArrayList<>();
+        StringBuilder token = new StringBuilder();
+        int depth = 0;
+        char quote = 0;
+        for (int i = 0; i < list.length(); i++) {
+            char c = list.charAt(i);
+            if (quote != 0) {
+                if (c == '\\' && i + 1 < list.length()) {
+                    token.append(c);
+                    c = list.charAt(++i);
+                } else if (c == quote) {
+                    quote = 0;
+                }
+            } else if (c == '"' || c == '\'') {
+                quote = c;
+            } else if (c == '[' || c == '{') {
+                depth++;
+            } else if ((c == ']' || c == '}') && depth > 0) {
+                depth--;
+            } else if (depth == 0 && (c == ',' || Character.isWhitespace(c))) {
+                if (!token.isEmpty()) {
+                    tokens.add(token.toString());
+                    token.setLength(0);
+                }
+                continue;
+            }
+            token.append(c);
+        }
+        if (!token.isEmpty()) {
+            tokens.add(token.toString());
+        }
+        return tokens;
     }
 
     /** the reference as a book would write it, with the scheme spelled out */

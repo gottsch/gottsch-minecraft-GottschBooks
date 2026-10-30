@@ -20,6 +20,7 @@ package mod.gottsch.forge.gottschbooks.core.text;
 import net.minecraft.resources.ResourceLocation;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -80,5 +81,15 @@ class ItemReferenceTest {
     void text() {
         assertEquals("item:minecraft:diamond", ItemReference.parse("minecraft:diamond").orElseThrow().text());
         assertEquals("item:minecraft:potion{x:1}", ItemReference.parse("minecraft:potion{x:1}").orElseThrow().text());
+    }
+
+    @Test
+    void splitKeepsComponentsWhole() {
+        assertEquals(List.of("minecraft:filled_map[custom_data={D2DungeonMap:{a:1, b:\"x, y\"}}]", "#minecraft:axes", "minecraft:torch"),
+                ItemReference.split(" minecraft:filled_map[custom_data={D2DungeonMap:{a:1, b:\"x, y\"}}], #minecraft:axes minecraft:torch,"));
+        // 1.20.1-style NBT braces, and a quoted bracket that isn't a bracket
+        assertEquals(List.of("minecraft:filled_map{D2DungeonMap:{}}", "minecraft:potion[x='a]b']"),
+                ItemReference.split("minecraft:filled_map{D2DungeonMap:{}},minecraft:potion[x='a]b']"));
+        assertEquals(List.of(), ItemReference.split(" , "));
     }
 }

@@ -24,6 +24,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -114,6 +115,11 @@ public final class Manual {
     /** an entry the player can read: it exists and isn't locked */
     public Optional<Entry> entry(String id) {
         return Optional.ofNullable(entries.get(id)).filter(Entry::unlocked);
+    }
+
+    /** every entry, locked ones included, in contents order */
+    public Collection<Entry> allEntries() {
+        return entries.values();
     }
 
     /** the readable entries of {@code category} ("" for those in none, or in a category that doesn't exist) */

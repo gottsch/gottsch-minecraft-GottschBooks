@@ -5,6 +5,122 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-10-30
+
+### Added
+
+#### Item lookup
+- Hovering over an item in any inventory adds a tooltip line naming the manual that explains it, and the **Look Up
+  Item in a Manual** key (B by default) opens the manual at that entry, on the page that shows the item. Closing the
+  book returns to the inventory. Works while the player carries the manual; locked entries never answer. The line
+  shows the key as bound, never wraps, and is left out while SHIFT is held, to keep long tooltips short.
+- An entry explains an item when it spotlights it, has a recipe that makes it, has it as its `icon`, or lists it in
+  the new `items:` front matter (item ids and `#tags`), in that order of preference.
+- `lookup:` in book.md: `always` answers lookups without the manual in the inventory, `never` turns them off.
+- `lookup_from:` (an entry's, or book.md's for every entry): `items` answers only for the entry's `items:`, so an
+  icon or spotlight can be just for show; `none` answers for nothing; `all` (the default) for everything shown.
+- **One kind of an item:** an item written with NBT (`items: minecraft:filled_map{D2DungeonMap:{}}`) answers only
+  for stacks whose NBT holds it (a subset of the stack's). Such an entry comes before any entry for the plain item,
+  so a manual can explain one kind of map apart from maps.
+- The tooltip line goes away for an item once its entry has been opened (`lookupHintUntilRead`, on by default); the
+  key still works.
+
+#### Reading
+- **Search:** **Search** above a manual (or Ctrl+F) lists the entries that mention every word typed, with a line of
+  each around the word. A result opens on the page with the word; Back returns to the results. Titles, text, tables,
+  captions and spotlighted items' names are searched; locked entries never show.
+- **"New" marks:** entries the player hasn't opened have a red dot on the contents (and their categories, and search
+  results), and the contents counts them with a **Mark all read** link.
+- **Bookmarks:** **Bookmark** above the book (or Ctrl+D) marks a page of a lore book or manual entry; each bookmark is
+  a ribbon out of the book's edge, which a click opens and a right-click removes (up to 10 a book). A bookmark finds
+  its page however the window lays the text out.
+- What a player has opened and bookmarked is kept on their computer, in `gottschbooks/reading.json`, for every world.
+- **Chapters:** a lore book can be written as a file per chapter, `<locale>/01-arrival.md`, `02-the-storm.md`, ...
+  (a number, a hyphen, a name), read in the order of their numbers after `text.md`, which is now optional. Each
+  chapter starts on a new page, its first heading is its title, and with two or more the title page lists them; a
+  click turns to one, **Contents** above the book returns to the list, and `[text](entry:02-the-storm#anchor)` links
+  jump between chapters, with Back. Each chapter file falls back to `en_us` on its own, so a translation missing a
+  chapter reads it in English, in its place. A book of `text.md` alone reads as before; bookmarks and the
+  exporter (one page, with a linked chapter list) work across chapters, and `/gottschbooks check` and `BookLint`
+  report chapter files with bad names or shared numbers, chapters with no heading, and translated chapters `en_us`
+  has no file for. `GottschBooksClient.open(book, entry)` opens a lore book at a chapter.
+- **Unlock toasts:** earning an advancement that unlocks manual entries shows a toast, *New in <manual>*, with the
+  book's icon and the entry's title (or how many entries, when several in one book unlock at once). Pressing the
+  item lookup key (B by default) while it shows, with no screen open, opens the manual there. Only for manuals the
+  player carries (or `lookup: always`), and never for advancements already earned when joining a world.
+
+#### Getting books to players
+- `"announce_on_first_join": true` in a book's server entry: instead of giving the book, each player is told about it
+  once, in chat, with a **[Get it]** link. A `book.<ns>.<path>.announce` lang line words it. `announceBooks = false` in
+  `serverconfig/gottschbooks-server.toml` turns announcements off for a world; giving is never affected.
+- `/gottschbooks get <book>`: any player takes a book whose entry gives or announces it on first join, unless they
+  already carry it. `/gottschbooks open` is still for operators only.
+- **Lecterns:** any Gottsch Books book (`gottschbooks:book` or a mod's own `BookItem`) goes on a vanilla lectern, and
+  right-clicking the lectern opens it in the reader for that player, instead of vanilla's lectern screen. Reading it
+  there counts for `gottschbooks:book_read`. Sneaking with both hands empty takes the book off; breaking the lectern
+  drops it. A comparator reads a steady signal while the book is on the lectern, since the server doesn't know the
+  page.
+
+#### Configs
+- A client config, `config/gottschbooks-client.toml`: `lookupHint = false` hides the item lookup line for players who
+  know their mods (the key keeps working), and `/gottschbooks lookup hint on|off` sets it from chat;
+  `lookupHintUntilRead` (above).
+- `unlockToasts = false` in `config/gottschbooks-client.toml` turns the unlock toasts off.
+- A server config, `serverconfig/gottschbooks-server.toml`, with `announceBooks` (above).
+
+#### Checking books
+- `/gottschbooks check` writes every problem to `logs/gottschbooks-check.txt`, grouped by file, and chat links to it:
+  **[Open report]** opens it, **[Copy]** copies it whole. Chat now shows the first 10 problems.
+- It also reports `items:` values that aren't items or tags, unknown `lookup:` and `lookup_from:` values,
+  `lookup_from: items` without `items:`, and a vanilla icon that answers lookups in a mod's manual when the entry
+  shows that item nowhere else.
+- **Checking books in your build:** `BookLint` checks the books under one or more resource roots without the game
+  (links, anchors, categories, front matter values, unknown blocks, tables, `_index.md` / `text.md`, item
+  references that don't parse) and exits with 1 when it finds anything, so a `JavaExec` task can fail a build or
+  CI. WRITING.md has the Gradle task. Whether items, recipes and fonts exist is still checked in game.
+
+#### Languages
+- Korean (`ko_kr`), Japanese (`ja_jp`) and Simplified Chinese (`zh_cn`) translations of Gottsch Books' own strings.
+
+#### Exporting books
+- An exporter turns a manual or lore book into static web pages, so the same text can be published as a wiki (a
+  GitHub wiki or GitHub Pages) or as mod-page content without writing it twice. A manual gets an index page (title,
+  landing text, each category with its entries) and a page per entry; a lore book gets one page.
+- Run it with `./gradlew exportBook -Pbook=<book folder> -Plocale=en_us -Pout=<folder> -Pformat=html|markdown`, or
+  from your own build with `mod.gottsch.forge.gottschbooks.export.BookExport` and the same four arguments. It reads
+  the book's files directly and needs no game running.
+- Two formats: standalone HTML pages (`index.html`, `<entry>.html`), keeping headings with their `{#anchor}` ids,
+  notes, lists, ornaments, tables with their alignment, and colours, bold and italic as inline styles; or
+  GitHub-wiki-flavoured Markdown (`Home.md`, `<entry>.md`) with bold and italic, whose anchor links use the ids GitHub
+  gives headings. In both, `entry:` links become relative links between the pages and `{font:...}` runs are plain
+  text.
+- Spotlights, recipes, images, mobs, illustrations and table icons become labelled placeholders showing their id,
+  with their text kept. Locked entries are exported, marked as locked with the advancement that unlocks them.
+
+#### For mod developers
+- `GottschBooksClient.open(book, entry, stack)`: opens an entry on the page that shows a stack (a spotlight of that
+  very kind first).
+- `BookDef.announceOnFirstJoin()` and `BookDef.free()`; the four-argument constructor still works.
+
+#### Docs and examples
+- WRITING.md has sections on search, new entries, bookmarks, item lookup and skins (giving a book its own cover,
+  page and ornament).
+- WRITING.md has a section on exporting a book as web pages: running the exporter, the two formats, and what
+  carries over or becomes a placeholder.
+- The example journal has a sea-blue skin; the field guide is announced rather than given, and shows `lookup_from`
+  and an item lookup for one kind of potion.
+- The example journal is written in three chapters, with a link between them, and has a Korean (`ko_kr`)
+  translation.
+- WRITING.md has a section on chapters (naming, order, links, translating), and its files, languages, links,
+  checking and exporting sections cover them; AI-INSTRUCTIONS.md says when and how to split a lore book into
+  chapters.
+
+### Fixed
+- A mob whose model is taller than its hitbox (antlers, branches, a hat) no longer draws over the text above its
+  `entity` block: the mob is sized by its model. An optional scale after the id
+  (```` ```entity mymod:golem 0.7 ````, above 0 up to 1) draws it smaller; `/gottschbooks check` and `BookLint` report
+  a bad scale.
+
 ## [1.2.0] - 2026-10-28
 
 ### Added
