@@ -121,7 +121,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (```` ```entity mymod:golem 0.7 ````, above 0 up to 1) draws it smaller; `/gottschbooks check` and `BookLint` report
   a bad scale.
 
-## [1.2.0] - Unreleased
+## [1.2.0] - 2026-10-28
 
 ### Added
 - Recipe blocks draw each kind of recipe the way its block does: smelting, blasting, smoking and campfire cooking
