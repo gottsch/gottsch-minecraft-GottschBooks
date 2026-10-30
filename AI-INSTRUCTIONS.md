@@ -14,7 +14,7 @@ Follow this document exactly. Gottsch Books is **not** general Markdown: syntax 
 as plain text, so ordinary Markdown habits (backticks, HTML, nested lists, `[text](#anchor)` links) produce visible
 junk in game. Where these instructions and your Markdown habits disagree, these instructions win.
 
-These instructions describe Gottsch Books **1.2.0**. The table in [Features by version](#features-by-version) lists
+These instructions describe Gottsch Books **1.3.0**. The table in [Features by version](#features-by-version) lists
 what older versions lack.
 
 ---
@@ -87,7 +87,7 @@ Everything for one book lives under `assets/<namespace>/books/<book>/`. The book
 
 ```
 assets/<ns>/books/<book>/
-├── book.md                     mode: manual (required), icon, skin, pages
+├── book.md                     mode: manual (required), icon, skin, pages, lookup, lookup_from
 └── en_us/
     ├── _index.md               the manual's title and its landing text (shown above the contents)
     ├── categories/
@@ -107,6 +107,21 @@ assets/<ns>/books/<book>/
     └── text.md                 the whole text
 ```
 
+A long lore book may be split into chapters, one file each, read in the order of their numbers:
+
+```
+assets/<ns>/books/<book>/
+└── en_us/
+    ├── text.md                 optional: title:, author: and any foreword
+    ├── 01-arrival.md           a chapter: a number, a hyphen, a lowercase name (a-z, 0-9, - and _)
+    └── 02-the-storm.md         each starts on a new page; its first heading (# The Storm) is its title
+```
+
+- Number every chapter differently. Pad with zeros (`01-`, `02-`) so they also sort in order as files.
+- Start every chapter with a `#` heading: it is the chapter's title on the book's chapter list.
+- With no `text.md`, put `title:` and `author:` in the first chapter's front matter.
+- No other files in a lore book's language folder: they are never shown.
+
 ### Also, for both
 
 - **Server entry:** `data/<ns>/gottschbooks/book/<book>.json`. It's needed to give the book on first join, or to
@@ -122,7 +137,8 @@ assets/<ns>/books/<book>/
 - **Other languages:** each language is a folder next to `en_us` (`es_es`, `de_de`, `ko_kr` ...). Each file falls
   back to `en_us` on its own, so a translation may cover only some files.
 - **When translating:** keep every file name, id, entry id, anchor, category id and front matter key exactly as in
-  `en_us`. Translate only the human text: titles, prose, captions and link text.
+  `en_us`. Translate only the human text: titles, prose, captions and link text. A lore book's chapter files keep
+  their `en_us` names too (`ko_kr/02-the-storm.md`); a chapter left untranslated shows in English, in its place.
 
 ---
 
@@ -138,16 +154,25 @@ A file may start with `key: value` lines between two `---` lines.
 |---|---|---|
 | `mode` | book.md | `manual` for a manual. Leave it out for a lore book |
 | `icon` | book.md | the manual's icon on its contents page: an item |
+| `lookup` | book.md | leave it out (the manual answers item lookups while the player carries it). `always` only if the person says their manual is opened by a plain item or a command; `never` to turn lookups off |
 | `skin` | book.md | only if the person has custom book textures: a folder such as `mymod:textures/gui/my_book` holding `cover.png`, `page.png`, `ornament.png` |
 | `pages` | book.md, entries | `single` (one wide page) or `spread` (two pages, the default): the [page style](#page-styles) the text starts in. A lore book takes it from book.md only |
-| `title` | _index.md, categories, entries, text.md | the title |
-| `author` | text.md | the lore book's author, shown as "by ..." |
+| `title` | _index.md, categories, entries, text.md | the title. A lore book in chapters with no text.md: in the first chapter |
+| `author` | text.md | the lore book's author, shown as "by ..." (with no text.md: in the first chapter) |
 | `icon` | categories, entries | the item shown beside it on the contents and on the entry's title: give every category and entry one |
 | `sort` | categories, entries | a whole number; lower comes first. Use 10, 20, 30 ... so the person can insert things later |
 | `category` | entries | the id of a category file (`basics` for `categories/basics.md`). Every entry needs one that exists |
-| `advancement` | entries | an advancement id; the entry stays hidden until the player has it. Only with a real id |
+| `advancement` | entries | an advancement id; the entry stays hidden until the player has it, and a toast tells them when it unlocks. Only with a real id of an advancement that has a `display` |
+| `items` | entries | the items the entry explains in plain text, beyond its spotlights, recipes and icon: item ids and `#ns:tag` item tags, separated by commas, in double quotes: `items: "mymod:wrench, #mymod:wrenches"`. Only real ids. An id written with components answers only for stacks that have them; use that only when the person says how their item is told apart |
+| `lookup_from` | entries, book.md | leave it out (the entry answers for everything it shows). `items` when the entry's icon or spotlights are only for show, such as a vanilla torch on a lighting entry; then list what it explains in `items:`. `none` for an entry that explains no item |
 
 An entry's title comes from `title:`. Don't also start the entry with a `# Title` heading.
+
+**Item lookup.** A player hovering over an item in their inventory can press a key to open the entry that explains
+it. An entry explains an item when it has a `spotlight` of it, a `recipe` that makes it, the item as its `icon`, or
+the item in `items:`. So every important item should have one entry that spotlights it; use `items:` for items an
+entry covers only in its text (the tiers of a tool, say). In a manual about a mod, don't give an entry a vanilla
+icon it doesn't explain without `lookup_from: items`: the icon would send every one of that vanilla item to it.
 
 ---
 
@@ -188,7 +213,8 @@ Rules for inline text:
 - Prefer dark colours: `dark_red`, `dark_green`, `dark_aqua`, `dark_purple`, `gold`, `dark_blue`. The page is
   parchment, so `yellow`, `white` and `aqua` are hard to read.
 - Use colour sparingly, for key terms and values.
-- `entry:` links work only in manuals, never in lore books.
+- `entry:` links lead between a manual's entries. In a lore book they lead only to its chapters:
+  `[the storm](entry:02-the-storm)`, or `entry:02-the-storm#anchor` for a heading in one.
 - Escape a line that would otherwise start a block: `\# not a heading`, `\- not a list`, `\> not a note`.
 - Escape `*`, `{` or `|` that should show as themselves.
 
@@ -252,7 +278,7 @@ The heart of every machine. It does **everything**.
 | `spotlight` | an item | the item at 2x in a frame, with its tooltip on hover |
 | `recipe` | a recipe id | the recipe as its block shows it (crafting grid, furnace, stonecutter, smithing table, or a mod's machine) and the result |
 | `image` | a full texture path with `.png`, then optionally `width height`: `mymod:textures/gui/map.png 128 64` | the picture, scaled to the page |
-| `entity` | a mob's entity id | the mob, slowly turning |
+| `entity` | a mob's entity id, then optionally a scale above 0 up to 1: `mymod:golem 0.7` | the mob, slowly turning. The mob is sized to fit; add a scale only when the person wants it smaller |
 
 - Put `## A Heading` on the line before a block to title it. The two then stay on the same page.
 - A recipe block with an empty body is fine. Close every block with three backticks.
@@ -314,11 +340,12 @@ by it. If you aren't sure of the exact data, leave it out and say so in your rep
 | Field | Use |
 |---|---|
 | `give_on_first_join` | `true` gives each player the book once, on first join |
+| `announce_on_first_join` | `true` tells each player about the book once, in chat, with a [Get it] link, instead of giving it. Ask the person which they want; for a manual, suggest this one |
 | `track_reading` | `false` for a manual (so it doesn't count toward "read every book" advancements). Leave it out for a lore book |
 | `item` | the item given; leave it out to use the library's own `gottschbooks:book`, or name the mod's own book item |
 | `disabled` | `true` switches the book off. Don't write it unless asked |
 
-A manual that isn't given on first join needs no server entry.
+A manual that isn't given or announced on first join needs no server entry.
 
 **Without code, by command:**
 
@@ -341,11 +368,14 @@ new BookItem(new Item.Properties(), new ResourceLocation("mymod", "guide"))     
 
 - **Files:** one `en_us/text.md` with `title:` and `author:`, plus a server entry with `{}` (so reading it can count
   toward advancements) or `{"give_on_first_join": true}`.
+- **Chapters:** for a long book (more than ten or so pages of text), split it into chapter files (`01-arrival.md`,
+  see [Section 3](#a-lore-book)), each opening with a `#` heading. Keep `title:` and `author:` in `text.md`.
 - **Voice:** write in the voice the person asks for: a diary, a chronicle, a letter.
 - **Sections:** separate them with `---` ornaments. A section is a scene or a day.
 - **Pictures:** use an illustration (`![caption](item:ns:id)`) at a moment that matters, not on every page.
 - **Notes:** use `>` for an editor's note or a later hand writing in the margin.
-- **No links:** lore books have no `entry:` links.
+- **Links:** only to chapters (`entry:02-the-storm`), and only when a reader would want to jump back; most lore
+  books need none.
 
 ## 9. Check your work before you answer
 
@@ -393,7 +423,8 @@ title: Widgets
 - **Check these ids:** every recipe id, and any id you inferred rather than were given.
 - **Assumptions:** the loader, the namespace, the defaults you used.
 - **Next steps:** put the files in place, run the game, press F3+T to reload, and run `/gottschbooks check <book>`.
-  It lists every missing item, recipe or link, and every malformed table, file by file.
+  It lists every missing item, recipe or link, and every malformed table, file by file. Ask them to click **[Copy]**
+  after its summary and paste the report back to you.
 
 ## Features by version
 
@@ -405,5 +436,9 @@ Use a feature only if the person's Gottsch Books version has it:
 | item data on items (components or NBT) | 1.1.0 |
 | `{font:...}` | 1.1.0 |
 | tables, `{page}`, `{page:single}`, `{page:spread}`, `pages:`, recipe layouts for furnaces, stonecutters and smithing, `/gottschbooks check` | 1.2.0 |
+| `items:`, `lookup:` (item lookup) | 1.3.0 |
+| `lookup_from:`, components in `items:` | 1.3.0 |
+| lore book chapters (`01-name.md`), links to chapters | 1.3.0 |
+| `announce_on_first_join` | 1.3.0 |
 
 Before 1.2.0, a page break is written `<!-- page -->` (1.2.0 and later read it too).

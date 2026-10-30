@@ -8,6 +8,7 @@ commands and loot tables, and the build setup), both forms are shown.
 - [Two kinds of book](#two-kinds-of-book)
 - [No code needed](#no-code-needed)
 - [Quick start: a lore book](#quick-start-a-lore-book)
+- [Chapters](#chapters)
 - [Quick start: a manual](#quick-start-a-manual)
 - [Files and languages](#files-and-languages)
 - [Front matter](#front-matter)
@@ -19,6 +20,7 @@ commands and loot tables, and the build setup), both forms are shown.
 - [Depending on Gottsch Books](#depending-on-gottsch-books)
 - [Tips and gotchas](#tips-and-gotchas)
 - [Checking a book](#checking-a-book)
+- [Exporting a book](#exporting-a-book)
 
 Writing a book with an AI? Give it [AI-INSTRUCTIONS.md](AI-INSTRUCTIONS.md) along with your docs: a version of this
 page written for an AI, with the rules that keep it from inventing ids or using Markdown the reader doesn't know.
@@ -27,9 +29,9 @@ page written for an AI, with the rules that keep it from inventing ids or using 
 
 | | Lore book | Manual |
 |---|---|---|
-| Text | one file, read front to back | many entries, in categories |
+| Text | one file (or a file per chapter), read front to back | many entries, in categories |
 | Opens on | a title page: icon, title, author | the contents: landing text, then each category's entries |
-| Getting around | turning pages | clicking entries, links, Back, Contents |
+| Getting around | turning pages, bookmarks; with chapters, the chapter list, links, Back, Contents | clicking entries, links, Back, Contents, Search, bookmarks |
 | Extras | illustrations, spotlights, recipes, images, mobs | the same, plus entries locked behind advancements |
 
 Both flow their text onto as many pages as the window needs, one or two pages at a time, so no text runs off a page
@@ -46,11 +48,15 @@ players' hands, use the library's own item, `gottschbooks:book`, which opens wha
 ```
 
 - **Give it on first join:** `"give_on_first_join": true` in the book's [server entry](#the-book-on-the-server).
+- **Announce it on first join:** `"announce_on_first_join": true` tells each player once, in chat, with a
+  [Get it](#announcing-a-book-instead-of-giving-it) link, instead of giving it.
 - **Put it in loot:** a loot table entry for `gottschbooks:book` with a `set_components` function setting
   `"gottschbooks:book": "mymod:guide"` (on 1.20.1, `set_nbt` with `{"gottschbooks:book":"mymod:guide"}`).
 - **Name it:** a lang line `"book.mymod.guide": "My Guide"` in your resource pack, or on the stack (`item_name` on
   1.21.1, a `display` name on 1.20.1).
 - **Open it from a command block or function:** `/gottschbooks open @p mymod:guide`.
+- **Put it on a lectern:** use the book on an empty lectern, and anyone can right-click it to read it (see
+  [On a lectern](#on-a-lectern)).
 
 So a modpack can ship its own guide with no mod at all. A mod only needs code for an item of its own (its own
 model, name and creative tab), which the quick starts below show.
@@ -89,6 +95,47 @@ public static final DeferredItem<Item> DIARY = ITEMS.register("old_diary",
 
 Right-click it and the book opens. One item can also stand for many books: register a plain
 `new BookItem(properties)` and give each stack its book with `Books.of(item, bookId)`.
+
+## Chapters
+
+A long lore book can be written as a file per chapter instead of one `text.md`. Name each chapter file with a
+number, a hyphen, then a name, in the language folder beside (or instead of) `text.md`:
+
+```
+assets/mymod/books/tidewalkers_log/
+├── book.md
+└── en_us/
+    ├── text.md               optional: the title, author and any foreword
+    ├── 01-arrival.md
+    ├── 02-the-storm.md
+    └── 03-the-wreck.md
+```
+
+- **The name:** digits, `-`, then lowercase letters, digits, `-` or `_` (`01-arrival.md`, `2-the_storm.md`). Chapters
+  are read in the order of their numbers, so `2-` comes before `10-` whether or not you pad with zeros; padding
+  (`01-`, `02-`) keeps them in order in your file browser too. Give each chapter its own number: two with the same one
+  are read in name order, and the [check](#checking-a-book) points it out. Any other file in a lore book's language
+  folder (`arrival.md`, `chapters/01-arrival.md`) is never shown, and the check says so.
+- **The order:** `text.md` first, if there is one, then the chapters. Each chapter starts on a new page, in the book's
+  [page style](#page-styles) (`pages:` in book.md).
+- **The title page:** the front matter (`title:`, `author:`) is `text.md`'s, or, in a book without one, the first
+  chapter's. With two or more chapters, the title page lists them under *Contents*; a click on one turns to it, and
+  **Contents** above the book comes back to the list.
+- **Each chapter's title** is its first heading (`# The Storm`). That heading keeps its own `{#anchor}`, or gets the
+  chapter's file name as one, so links can jump to it. A chapter with no heading gets one made from its file name
+  (`02-the-storm` reads "The storm"); the check points that out too.
+- **Links between chapters:** `[the storm](entry:02-the-storm)` jumps to that chapter, and
+  `[the wreck](entry:02-the-storm#wreck)` to a heading in it; `entry:text#anchor` reaches a heading in `text.md`.
+  **Back** (or Backspace) returns to where you were.
+- **Bookmarks** work as in any book, across chapters.
+
+A book of `text.md` alone reads exactly as it always has.
+
+**Translating a book in chapters:** give each translated chapter the same file name as the `en_us` one
+(`ko_kr/02-the-storm.md`, not `ko_kr/02-pokpung.md`); file names are never shown, the heading is. As with every file,
+each chapter falls back to `en_us` on its own, so a translation that has only some chapters reads the rest in English,
+each in its place in the order. A translated chapter with a name `en_us` doesn't have would be a chapter of its own in
+every language (English readers would see it too), so the check points it out.
 
 ## Quick start: a manual
 
@@ -155,13 +202,16 @@ Everything lives under `assets/<namespace>/books/<book>/`. The book's id is `<na
 | File | Used by | Holds |
 |---|---|---|
 | `book.md` | both (optional for lore books) | `mode`, `icon`, `skin`: things that don't change with the language |
-| `<locale>/text.md` | lore book | the whole text |
+| `<locale>/text.md` | lore book | the whole text, or with [chapters](#chapters) the title, author and any foreword |
+| `<locale>/NN-<name>.md` | lore book | one [chapter](#chapters) (`01-arrival.md`), read in the order of the numbers |
 | `<locale>/_index.md` | manual | the manual's title and landing text |
 | `<locale>/categories/<id>.md` | manual | one category |
 | `<locale>/<entry>.md` | manual | one entry; `<entry>` may include folders (`items/widget.md` is entry `items/widget`) |
 
 `<locale>` is the game's language code: `en_us`, `es_es`, `ko_kr`, and so on. **Each file falls back to `en_us`
-on its own**, so a translation can cover only some files and the rest show in English.
+on its own**, so a translation can cover only some files and the rest show in English. That goes for a lore book's
+chapters too: a translation with fewer chapters reads the missing ones in English, in their place. Keep each
+translated file's name the same as the `en_us` one, chapters included (see [Chapters](#chapters)).
 
 Resource packs can replace or add any of these files, as with any other asset.
 
@@ -175,14 +225,17 @@ ignored.
 |---|---|---|
 | `mode` | book.md | `manual`; anything else (or no book.md) is a lore book |
 | `icon` | book.md | the manual's icon on its contents page, when it isn't opened from an item |
-| `skin` | book.md | a texture folder (`mymod:textures/gui/my_book`) holding `cover.png`, `page.png` and `ornament.png`; see [Tips](#tips-and-gotchas) |
+| `lookup` | book.md | when the manual answers [item lookups](#item-lookup): `carried` (the default) while the player carries it, `always`, or `never` |
+| `lookup_from` | book.md, entries | what an entry answers [item lookups](#item-lookup) for: `all` it shows (the default), only its `items`, or `none`. An entry's setting wins over book.md's |
+| `skin` | book.md | a texture folder (`mymod:textures/gui/my_book`) holding `cover.png`, `page.png` and `ornament.png`; see [Skins](#skins) |
 | `pages` | book.md, entries | the [page style](#page-styles) the text starts in: `single` for one wide page, `spread` (the default) for two side by side. An entry's setting wins over book.md's |
-| `title` | text.md, _index.md, categories, entries | the title. For a lore book, a leading `# Heading` works too |
-| `author` | text.md | shown under the title as "by ..." |
+| `title` | text.md, _index.md, categories, entries | the title. For a lore book, a leading `# Heading` in text.md works too; a lore book in chapters with no text.md takes its first chapter's `title:` |
+| `author` | text.md | shown under the title as "by ..." (a lore book in chapters with no text.md: its first chapter's) |
 | `icon` | categories, entries | the item shown next to it on the contents and on the entry's title |
 | `sort` | categories, entries | a number; lower comes first. Ties, and anything without one, sort by title |
 | `category` | entries | a category id (the file name under `categories/`). Entries without a known category are listed last |
-| `advancement` | entries | `ns:id`: the entry stays hidden until the player has this advancement |
+| `advancement` | entries | `ns:id`: the entry stays hidden until the player has this advancement; see [Locked entries](#locked-entries) |
+| `items` | entries | items the entry explains, for [item lookups](#item-lookup): item ids (with components to pick out one kind) and `#ns:tag` item tags, separated by commas |
 
 An `icon` (and a spotlight's item) is either an item id, `minecraft:diamond`, or a picture from an illustration
 scheme, `scheme:namespace:id` (see [Pictures and blocks](#pictures-and-blocks)). An item may carry components, as
@@ -261,6 +314,8 @@ Back to two pages.
 - `{page}` only starts a new page; `{page:single}` and `{page:spread}` start one and switch the style. Each goes on a
   line of its own; anywhere else it is shown as text.
 - The text starts in the style from `pages:` in the entry's front matter, else book.md's, else `spread`.
+- Each of a lore book's [chapters](#chapters) starts in book.md's style again, whatever the chapter before it
+  switched to.
 - After a switch, pages pair up afresh, so a spread page never faces a single one. A spread with one page left
   shows a blank page beside it, as at the end of a book.
 - In a window too narrow for two pages, every page is shown one at a time, and a single page is no wider.
@@ -356,7 +411,10 @@ The most common gem.
 | `spotlight` | an item (components allowed), or `scheme:ns:id` | the item at 2x in a frame, with a tooltip |
 | `recipe` | a recipe id | the recipe laid out for its block (below), and the result. Ingredients that accept several items cycle through them |
 | `image` | `ns:textures/....png`, then optionally `width height` | the image, scaled to fit the page (256x256 assumed without a size) |
-| `entity` | an entity id | the mob, slowly turning |
+| `entity` | an entity id, then optionally a scale above 0 up to 1: `mymod:golem 0.7` | the mob, slowly turning |
+
+An `entity` block sizes the mob by its model, not its hitbox, so antlers, branches or a tall hat fit. A scale, such as
+`0.7`, draws it smaller still, with its feet on the same floor.
 
 Put a `## Heading` right before a block to give it a title: the heading and the block are kept on the same page. If
 the item, recipe, image or mob doesn't exist, the page shows `[recipe ns:id?]` in its place and the log says why.
@@ -383,10 +441,150 @@ Read more [on the wiki](https://example.com/wiki).
 ```
 
 - `entry:<entry>` opens another entry of the same manual. `#anchor` jumps to the heading with `{#anchor}`.
+- In a lore book in [chapters](#chapters), `entry:<chapter>` (`entry:02-the-storm`) turns to that chapter, and
+  `entry:<chapter>#anchor` or `entry:text#anchor` to a heading. A lore book has no other entries to link to.
 - `https://` links ask the player before opening the browser (and follow the game's Chat Links setting).
 - Links are underlined and blue. **Back** (or Backspace) returns to where you were, and **Contents** goes to the
   contents page.
 - A `[text]` that isn't followed by a link target is just text, so `[brackets]` in prose are safe.
+
+## Skins
+
+Every book can have its own look: a leather cover for a field manual, sea-blue for a ship's log, black and silver for
+a necromancer's grimoire. Put three textures in a folder of your resource pack and name the folder in book.md:
+
+```markdown
+---
+mode: manual
+skin: mymod:textures/gui/my_book
+---
+```
+
+| File | Size | What it draws |
+|---|---|---|
+| `cover.png` | 32x32 | the cover around the pages, and the gutter between them |
+| `page.png` | 32x32 | each page |
+| `ornament.png` | 21x5 | the flourish between `---` sections |
+
+`cover.png` and `page.png` are nine-slices: the corners are drawn as they are, and the edges and middle are tiled (never
+stretched) to fit any window. The cover keeps an 8-pixel border and the page a 5-pixel one, so draw the frame within
+those borders and keep the middle a pattern that tiles. The text keeps its own ink colours, so keep the pages light.
+
+The easiest start is a copy of the default skin, `assets/gottschbooks/textures/gui/book/` in the Gottsch Books jar,
+recoloured. The example *Lighthouse Keeper's Journal* does just that, in sea blue
+(`src/example/resources/assets/example/textures/gui/sea_book/`). Without `skin:` the default is drawn. A skin needs
+all three files: a missing one shows as Minecraft's purple-and-black missing texture, and `/gottschbooks check` names
+it.
+
+## Search
+
+Every manual has **Search** above the book (or Ctrl+F). The player types, and the search page lists the entries
+that mention every word typed, ignoring case, each with a line of its text around the word. Entries whose title has
+the words come first, then those that mention them most. A click (or Enter, for the first) opens the entry on the
+page where the word is, and **Back** returns to the results.
+
+Search reads titles, paragraphs, headings, list items, table cells, captions, and the names of spotlighted and
+illustrated items, in the player's language. Locked entries are never found. There is nothing to write for it, but
+the words players will search for (an item's name, a mob's) are worth having in the text.
+
+## New entries
+
+An entry the player hasn't opened yet has a small red dot after its name on the contents, and so does its
+category; search results show it too. Under the manual's title, *New entries: 5* counts them, with a **Mark all
+read** link for a player who already knows the mod. An entry added in a mod's update shows as new, so players find
+what changed. What a player has opened is kept on their computer, in `gottschbooks/reading.json` in the game
+folder, for every world alike; deleting the file makes every entry new again. There is nothing to write for it.
+
+## Locked entries
+
+`advancement: ns:id` in an entry's front matter hides the entry until the player has that advancement: it isn't on
+the contents, search never finds it, the item lookup never answers with it, and an `entry:` link to it does nothing
+yet. The advancement must be one the client is told about, which means one with a `display` (vanilla
+sends the client nothing about advancements without one, such as recipe unlocks).
+
+When the player earns the advancement, a toast says so, drawn like an advancement's: the book's icon, *New in A
+Field Guide to the Overworld*, and the entry's title (cut short to fit). When several entries of one book unlock at
+once, one toast counts them, *3 new entries*. While it shows, its second line takes turns with *Press B to read*, and
+pressing the item lookup key (**Look Up Item in a Manual**, B by default) with no screen open opens the manual at
+the entry, the first in contents order when there are several. Toasts only come for manuals the player can read: in
+their inventory, or `lookup: always` in book.md. Advancements the player already has when they join a world
+show no toasts. Players who don't want them set `unlockToasts = false` in `config/gottschbooks-client.toml`. There
+is nothing to write for them beyond `advancement:`.
+
+## Bookmarks
+
+Any page of a lore book or a manual entry can be bookmarked: **Bookmark** above the book (or Ctrl+D) marks the pages
+showing, and **Remove bookmark** takes it off again. Each bookmark is a coloured ribbon out of the book's right
+edge; hovering shows where it goes (the entry, and the first words of its page), a click opens it, and a right-click
+removes it. A book keeps up to 10. Pages reflow with the window's size, so a bookmark remembers the paragraph (or
+picture, or table) its page starts with, not a page number. Bookmarks are kept with the "new" marks, in
+`gottschbooks/reading.json`. There is nothing to write for them.
+
+## Item lookup
+
+While a player carries a manual, hovering over an item in any inventory adds a line to its tooltip naming the key
+and the manual, *[B] A Field Guide to the Overworld*, and pressing the key opens the manual at that entry, on the page
+that shows the item. Closing the book goes back to the inventory. The key is **Look Up Item in a Manual** under
+Controls; the line shows whatever it is bound to, and unbinding it removes the line. The line is one line at most (a
+long title is cut short), and is left out while SHIFT is held, which many mods use for a long detail view; the key
+works either way.
+Once a player has opened the entry that explains an item, the line goes away for that item, since they know where
+to look; the key still works (`lookupHintUntilRead = false` in `config/gottschbooks-client.toml` keeps the line).
+Players who no longer need the line can hide it with `/gottschbooks lookup hint off` (or `lookupHint = false` in
+`config/gottschbooks-client.toml`) and still press the key; `/gottschbooks lookup hint on` brings it back.
+
+An entry explains an item when it has:
+
+1. a `spotlight` of the item, or
+2. a `recipe` that makes it, or
+3. the item as its `icon`, or
+4. the item in its `items:` front matter.
+
+When several entries could answer, that is also the order of preference; after that, the first in the contents
+wins. `items:` is for things explained in plain text, and takes tags too:
+
+```markdown
+---
+title: Tools
+icon: minecraft:iron_pickaxe
+items: #minecraft:pickaxes, #minecraft:axes, minecraft:shears
+---
+```
+
+**An icon only for show.** An entry's icon and spotlights answer lookups too, so a torch on a "Bring Light" entry
+sends every torch in the game to it. `lookup_from: items` makes the entry answer only for what its `items:` lists;
+`lookup_from: none`, for nothing. Put either in book.md to make it every entry's default, and let an entry say
+`lookup_from: all` to answer for everything it shows again:
+
+```markdown
+---
+title: Bring Light
+icon: minecraft:torch
+lookup_from: items
+items: dungeons2:wall_lantern, dungeons2:brazier
+---
+```
+
+`/gottschbooks check` points out a vanilla icon in a manual about a mod's items, when the entry shows that item
+nowhere else.
+
+**One kind of an item.** An id written with components answers only for stacks that have them, and comes before any
+entry for the plain item, whatever its rank. So a general *Maps* entry can spotlight `minecraft:filled_map` while a
+*Dungeon Maps* entry answers for the maps a mod marks:
+
+```markdown
+items: minecraft:filled_map[custom_data={D2DungeonMap:{}}]
+```
+
+To match, each component written must be on the hovered stack with the same value, except `custom_data`, which
+need only *contain* what is written: the tags listed, with the same values, any others ignored (nested compounds
+the same way; a list matches when the stack's list holds each listed element). `!component` means the stack must
+not have it. A plain id answers for every stack of the item. The same goes for icons and spotlights written with
+components, and the key opens the entry at the spotlight of that very kind when it has one.
+
+Locked entries never answer, so a lookup can't give away an entry before its advancement. `lookup: always` in
+book.md answers without the manual in the inventory, which suits a manual opened by a plain item or a command;
+`lookup: never` turns lookups off for a book. Only manuals answer, never lore books.
 
 ## The book on the server
 
@@ -398,6 +596,7 @@ The text is a client asset, so the server only knows a book exists if it has a *
   "disabled": false,
   "track_reading": true,
   "give_on_first_join": false,
+  "announce_on_first_join": false,
   "item": "gottschbooks:book"
 }
 ```
@@ -407,9 +606,30 @@ The text is a client asset, so the server only knows a book exists if it has a *
 | `disabled` | `false` | switch the book off: it's no longer tracked, counted or given (a pack can do this to your book) |
 | `track_reading` | `true` | reading it is recorded and counts for the advancement trigger below. Set `false` for a manual |
 | `give_on_first_join` | `false` | each player gets the book once, the first time they join after the entry exists (so a book added to a running world reaches existing players too) |
+| `announce_on_first_join` | `false` | instead of giving the book, tell each player about it once, in chat, with a **[Get it]** link (see below). Ignored when `give_on_first_join` is on |
 | `item` | `gottschbooks:book` | the item given: any `BookItem`, such as your mod's own manual item |
 
-With an entry, reading the book from a `BookItem` records it for the player and fires the
+### Announcing a book instead of giving it
+
+Many players don't want a stack of manuals pushed into their inventory, but they can't use a manual they don't know
+about. `"announce_on_first_join": true` tells each player once, on their first join after the entry exists:
+
+> **A Field Guide to the Overworld** is available. **[Get it]**
+
+Clicking **[Get it]** runs `/gottschbooks get <book>`, which any player may use, operator or not, for a book whose
+entry gives or announces it on first join (so a player who lost a given book can get another). A player who
+already carries the book isn't told. To word the line yourself, say where else the book comes from, add a lang line
+`book.<namespace>.<path>.announce`, with `%s` for the book's name; the link is added after it:
+
+```json
+"book.mymod.manual.announce": "%s is in the Tools tab, or craft one from a book and a bone."
+```
+
+A server owner can turn every announcement off with `announceBooks = false` in the world's
+`serverconfig/gottschbooks-server.toml`. That only silences announcements; books given on first join are still
+given.
+
+With an entry, reading the book from a `BookItem` or a lectern records it for the player and fires the
 `gottschbooks:book_read` advancement trigger:
 
 ```json
@@ -437,10 +657,27 @@ Book tags live at `data/<ns>/tags/gottschbooks/book/<tag>.json` (`{"values": ["m
 - **An item:** `gottschbooks:book` (no code), or your own `BookItem` (see the quick starts). Its client side opens
   the reader; its server side records the read. Any `BookItem` takes its name from the lang key
   `book.<namespace>.<path>` (a `/` in the path becomes `.`) when a language file has it.
-- **Client code:** `GottschBooksClient.open(book)`, `open(book, iconStack)`, or `open(book, "entry#anchor")` for a
-  manual. Client only: call it from a screen, a keybind or the client branch of `Item#use`.
+- **Client code:** `GottschBooksClient.open(book)`, `open(book, iconStack)`, `open(book, "entry#anchor")` for a
+  manual, or `open(book, "entry", stack)` to open an entry on the page that shows the stack (closing it returns to
+  the screen that was open). Client only: call it from a screen, a keybind or the client branch of `Item#use`.
 - **A command:** `/gottschbooks open <players> <book> [entry]` (operators). Handy for tutorials and command
   blocks.
+
+### On a lectern
+
+Any `BookItem` stack that names a book, `gottschbooks:book` or a mod's own book item, goes on a vanilla lectern,
+like a written book: use it on an empty lectern. No tag is needed.
+
+- **Reading:** right-clicking the lectern opens the book for that player in the reader, instead of vanilla's lectern
+  screen. A manual opens where that player left it. It counts as reading the book, for the `gottschbooks:book_read`
+  trigger (when the book's entry tracks reading), and for the vanilla "Interactions with Lectern" statistic.
+- **Taking it off:** sneak and right-click the lectern with both hands empty. The book goes into your inventory, or
+  drops at your feet when it's full. (The reader has no Take Book button, so this stands in for vanilla's.) Sneaking
+  with something in hand does what it does on any lectern: nothing to the book.
+- **Breaking the lectern** drops the book, still the same book.
+- **Redstone:** vanilla's comparator signal follows a written book's page, but the server doesn't know which page a
+  player is reading, so a lectern holding a Gottsch Books book gives a steady signal instead, the same however far
+  anyone reads. There is no page-turn pulse.
 
 ## Depending on Gottsch Books
 
@@ -480,13 +717,11 @@ An empty result leaves the picture out; an exception is logged and never breaks 
 ## Tips and gotchas
 
 - **A manual's server entry should say `"track_reading": false`.** Otherwise reading the manual counts toward
-  `all_in` and "read any book" advancements meant for your lore books. Without `give_on_first_join` a manual needs
-  no entry at all.
+  `all_in` and "read any book" advancements meant for your lore books. Without `give_on_first_join` or
+  `announce_on_first_join` a manual needs no entry at all.
 - **Item names are lang keys, not book text.** The server can't read assets, so a book's item name comes from
   `book.<namespace>.<path>` in a language file (or the stack's own name), not from the book's `title:`.
-- **Skins:** `cover.png` and `page.png` are 32x32 nine-slices (8 px border on the cover, 5 px on the page; edges
-  and centre are tiled, never stretched). `ornament.png` is 21x5. The default skin is in
-  `assets/gottschbooks/textures/gui/book/`.
+- **Skins:** a book's own cover, page and ornament textures; see [Skins](#skins).
 - **Escaping:** text that starts a line with `#`, `>`, `-`, `1.` or `![`, or uses `*` or `{` literally, needs a `\`
   in front.
 - **Lists carry on:** a plain line straight after a list item joins that item. Leave a blank line to start a new
@@ -505,14 +740,126 @@ It finds:
 
 - items, pictures, recipes, images and mobs that don't exist, and components that don't parse
 - recipes with nothing to draw (their ingredients are worked out in code)
-- `entry:` links to entries that aren't there, or to a `{#anchor}` the entry doesn't have, and entry links in a lore
-  book
+- `entry:` links to entries that aren't there, or to a `{#anchor}` the entry doesn't have, and a lore book's links
+  to anything but its chapters and `text.md`
 - fonts that aren't there
 - entries whose `category` has no `categories/<id>.md`
+- `items:` values that aren't items or item tags, a `lookup` other than `carried`, `always` or `never`, a
+  `lookup_from` other than `all`, `items` or `none`, and `lookup_from: items` with no `items:`
+- a vanilla `icon` in a manual about a mod's items, when the entry shows that item nowhere else, since it answers
+  lookups for every one of that item
 - fenced blocks the reader doesn't know (` ```chart `), which show as plain lines
 - table rows with too few or too many cells, icons after a cell's text, and empty tables
 - a `pages` value, or a `{page:...}` style, other than `single` or `spread`
-- a manual with no `_index.md`, a lore book with no `text.md`, and a `skin` missing any of its three textures
+- a manual with no `_index.md`, a lore book with no `text.md` and no chapters, and a `skin` missing any of its three
+  textures
+- a lore book's files that aren't `text.md` or a [chapter](#chapters), chapters sharing a number, chapters with no
+  heading, a translated chapter whose name `en_us` doesn't have, and a book in chapters with no `title:`
 
-It checks every language a book has. The first 30 problems are shown in chat; click a file to copy its path. Every
-problem goes to the log.
+It checks every language a book has. The first 10 problems are shown in chat; click a file to copy its path. Every
+problem goes to the log and to a report, `logs/gottschbooks-check.txt` in the game folder, grouped by file.
+**[Open report]** after the summary opens it in your text editor, and **[Copy]** copies the whole report, ready
+to paste into an AI chat or an issue. Each check replaces the report.
+
+### In your build
+
+The checks that need no game also run in your Gradle build or CI, so a broken link or a bad table fails the build
+instead of waiting for someone to open the book. The checker ships in the Gottsch Books jar; give it one or more
+resource roots (folders holding `assets/`, a later one replacing an earlier one's files as a resource pack does):
+
+```groovy
+// gradlew checkBooks (and gradlew check, or build) checks every book under src/main/resources
+tasks.register('checkBooks', JavaExec) {
+    group = 'verification'
+    description = 'Checks the Gottsch Books books for mistakes the parser can see'
+    // holds the Gottsch Books jar (implementation or compileOnly) and the Minecraft classes its parser uses
+    classpath = sourceSets.main.compileClasspath
+    mainClass = 'mod.gottsch.neo.gottschbooks.core.lint.BookLint'
+    args file('src/main/resources').absolutePath
+}
+tasks.named('check') { dependsOn 'checkBooks' }
+```
+
+On Forge 1.20.1 the class is `mod.gottsch.forge.gottschbooks.core.lint.BookLint`. It prints each problem as
+`file: message`, as the in-game check logs them, then how many it found, and fails the task (exit code 1) if there
+are any.
+
+It finds what the files alone show: unknown `pages`, `lookup` and `lookup_from` values and `lookup_from: items`
+without `items:`; `entry:` links to entries, chapters or anchors that aren't there; entries whose `category` has no
+`categories/<id>.md`; unknown fenced blocks; table rows with the wrong number of cells, icons after a cell's text and
+empty tables; `{page:...}` styles; a manual with no `_index.md` or a lore book with no `text.md` and no chapters; a
+lore book's chapter problems (bad file names, shared numbers, no heading, names `en_us` lacks, no title); item
+references, tags and ids that aren't written right; and file names the game won't load (capitals,
+spaces). Whether an item, recipe, image, mob, font or skin texture exists needs the game: run
+`/gottschbooks check` for those.
+
+## Exporting a book
+
+The exporter turns a manual or lore book into static web pages, so the text you wrote for the game can also be your
+mod's wiki (a GitHub wiki or a GitHub Pages site) or mod-page content, without writing it twice. It reads the book's
+files directly, with the same parser the game uses, and needs no game running.
+
+In this repository, `exportBook` runs it:
+
+```
+./gradlew exportBook -Pbook=src/main/resources/assets/mymod/books/guide -Plocale=en_us -Pout=build/wiki -Pformat=markdown
+```
+
+With no `-Pbook` it exports the example field guide into `build/book-export`. In your own mod, with Gottsch Books on
+your runtime classpath (as it is when you [depend on it](#depending-on-gottsch-books)), add the same task to your
+build.gradle:
+
+```groovy
+tasks.register('exportBook', JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'mod.gottsch.neo.gottschbooks.export.BookExport'     // Forge 1.20.1: mod.gottsch.forge.gottschbooks.export.BookExport
+    args 'src/main/resources/assets/mymod/books/guide', 'en_us', 'build/wiki', 'markdown'
+}
+```
+
+It takes four arguments:
+
+| Argument | |
+|---|---|
+| book folder | the folder holding `book.md` and the language folders: `assets/<ns>/books/<book>` |
+| locale | the language to export, such as `en_us`. As in game, each file falls back to `en_us` on its own |
+| output folder | where the pages go; made if missing. Pages already there with the same names are replaced |
+| format | `html` (the default) or `markdown` |
+
+**What you get:**
+
+- **A manual:** an index page with the manual's title, its landing text, then each category with its description and
+  its entries in contents order (entries in no category, or in one that doesn't exist, come last under *Other
+  entries*). Then one page per entry, named after its id; an entry in a folder, `machines/smelter`, becomes
+  `machines--smelter`, so every page sits in one folder.
+- **A lore book:** one page with its title, author and text. A book in [chapters](#chapters) is still one page:
+  the chapters follow `text.md` in order, after a numbered list of them (with two or more) that links to each
+  chapter's heading, and links between chapters lead down the page.
+- **`html`:** standalone pages, `index.html` and `<entry>.html`, each with a small parchment style sheet of its own.
+  Open `index.html` in a browser, or put the folder on GitHub Pages or any web host.
+- **`markdown`:** GitHub-wiki-flavoured Markdown, `Home.md` (a wiki's front page) and `<entry>.md`, linked to each
+  other the way wiki pages are, without `.md`. Copy the files into your wiki's repository
+  (`git clone https://github.com/<you>/<mod>.wiki.git`) and push. A single entry's page also pastes into a mod page's
+  description on CurseForge or Modrinth, though its links to other entries won't lead anywhere there.
+
+**What carries over:**
+
+- headings, with their `{#anchor}` (in HTML as the heading's `id`; in Markdown, links to it use the id GitHub gives
+  the heading from its text)
+- paragraphs, line breaks, `>` notes, lists and `---` ornaments
+- tables, with each column's alignment. A table with no header has none in HTML; in Markdown it gets an empty header
+  row, since GitHub needs one
+- colours, bold and italic, as inline styles. GitHub drops inline styles, so Markdown keeps bold and italic only
+- `{font:...}` runs, as plain text (with no colour, since a font's pictures are often white)
+- `entry:` links, as relative links between the pages; `https://` links as they are. A link to an entry that doesn't
+  exist, and any `entry:` link in a lore book, is plain text
+
+**What can't be drawn** without the game becomes a labelled placeholder that shows its id, with its text kept under
+it: spotlights (*Item*), recipes (*Recipe*), images (*Image*), mobs (*Mob*) and illustrations (*Picture*). Icons in
+table cells show as their ids. Fenced blocks of a kind the reader doesn't know show their lines as plain text, as in
+game.
+
+**Locked entries** are exported too: the contents marks them *(locked)*, and their page starts with a note naming the
+advancement that unlocks them in game. Delete their pages and contents lines if they should stay a surprise.
+
+Page breaks and page styles (`{page}`, `{page:single}`, `pages:`) are left out: a web page is one long page.

@@ -19,15 +19,18 @@ package mod.gottsch.neo.gottschbooks;
 
 import mod.gottsch.neo.gottschbooks.api.BookDef;
 import mod.gottsch.neo.gottschbooks.api.GottschBooksRegistries;
+import mod.gottsch.neo.gottschbooks.client.ClientConfig;
 import mod.gottsch.neo.gottschbooks.core.BookReading;
 import mod.gottsch.neo.gottschbooks.core.BookGiving;
 import mod.gottsch.neo.gottschbooks.core.GottschBooksComponents;
 import mod.gottsch.neo.gottschbooks.core.GottschBooksItems;
+import mod.gottsch.neo.gottschbooks.core.ServerConfig;
 import mod.gottsch.neo.gottschbooks.core.advancement.GottschBooksCriteria;
 import mod.gottsch.neo.gottschbooks.core.network.GottschBooksNetwork;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
+import net.neoforged.fml.config.ModConfig;
 import net.neoforged.neoforge.registries.DataPackRegistryEvent;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -51,6 +54,8 @@ public class GottschBooks {
         GottschBooksCriteria.register(modEventBus);
         GottschBooksNetwork.register(modEventBus);
         modEventBus.addListener(GottschBooks::onNewDataPackRegistries);
+        modContainer.registerConfig(ModConfig.Type.CLIENT, ClientConfig.SPEC);
+        modContainer.registerConfig(ModConfig.Type.SERVER, ServerConfig.SPEC);
     }
 
     private static void onNewDataPackRegistries(DataPackRegistryEvent.NewRegistry event) {

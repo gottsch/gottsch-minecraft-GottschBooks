@@ -22,9 +22,10 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
+import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 
 /**
- * Client wiring: the book loader runs on every resource reload.
+ * Client wiring: the book loader runs on every resource reload, and the item lookup has its key.
  *
  * @author Mark Gottschling on 10/17/2026
  */
@@ -36,5 +37,10 @@ public final class ClientSetup {
     @SubscribeEvent
     public static void onRegisterReloadListeners(RegisterClientReloadListenersEvent event) {
         event.registerReloadListener(new BookLoader());
+    }
+
+    @SubscribeEvent
+    public static void onRegisterKeyMappings(RegisterKeyMappingsEvent event) {
+        event.register(ItemLookup.KEY);
     }
 }

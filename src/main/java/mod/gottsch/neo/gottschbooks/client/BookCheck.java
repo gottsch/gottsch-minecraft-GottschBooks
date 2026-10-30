@@ -17,11 +17,15 @@
  */
 package mod.gottsch.neo.gottschbooks.client;
 
+import mod.gottsch.neo.gottschbooks.core.ItemMatch;
+import mod.gottsch.neo.gottschbooks.core.lint.BookLint;
+import mod.gottsch.neo.gottschbooks.core.lint.LintBook;
 import mod.gottsch.neo.gottschbooks.core.text.Block;
 import mod.gottsch.neo.gottschbooks.core.text.BookText;
-import mod.gottsch.neo.gottschbooks.core.text.Inline;
+import mod.gottsch.neo.gottschbooks.core.text.EntityArgument;
+import mod.gottsch.neo.gottschbooks.core.text.ItemReference;
 import net.minecraft.client.Minecraft;
-import net.minecraft.network.chat.ClickEvent;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.Style;
 import net.minecraft.resources.ResourceLocation;
@@ -29,6 +33,7 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.level.Level;
 
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -36,8 +41,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 /**
  * Finds what would show as {@code [... ?]} on a page, or not show at all, in every file of a book: items, recipes,
@@ -45,21 +48,28 @@ import java.util.stream.Collectors;
  * aren't there, fonts that aren't, entries in a category that doesn't exist, and fenced blocks the reader doesn't
  * know. For {@code /gottschbooks check}, so an author finds them all at once instead of page by page. Needs a world,
  * since recipes, mobs and many components belong to it.
+ * <p>
+ * What the files alone show (front matter values, links, categories, unknown blocks, tables, references that don't
+ * parse) is {@link BookLint}'s, which builds and CI run without the game; this adds what needs the game, for whatever
+ * parses: whether items, tags, recipes, images, mobs, fonts and skin textures exist.
+ * <p>
+ * It also points out a vanilla item used as an entry's icon in a manual about a mod's items, when the entry doesn't
+ * otherwise show the item: such an icon is usually for show, yet it answers item lookups for every one of that item.
  *
  * @author Mark Gottschling on 10/27/2026
  */
 public final class BookCheck {
-    /** the fenced blocks the reader draws; any other kind shows its lines as plain text */
-    private static final Set<String> FENCES = Set.of("spotlight", "recipe", "image", "entity");
-    /** an icon left in a table cell's text, after the text began */
-    private static final Pattern LATE_ICON = Pattern.compile("!\\[[^\\]]*]\\([a-z0-9_]+:[a-z0-9_.-]+:");
-
     /** one thing wrong, and the file it is in ({@code assets/<ns>/books/<book>/<locale>/<entry>.md}) */
     public record Problem(String file, String message) {}
 
     private final LoadedBook book;
     private final Level level;
     private final List<Problem> problems = new ArrayList<>();
+    /** entries already told about a vanilla icon, so each is told once, not once per language */
+    private final Set<String> iconsTold = new HashSet<>();
+    /** whether the book shows items that aren't vanilla's (a mod's manual), worked out on first need */
+    @Nullable
+    private Boolean modded;
     private final Map<ResourceLocation, Boolean> resources = new HashMap<>();
     private String file;
 
@@ -70,6 +80,8 @@ public final class BookCheck {
 
     public static List<Problem> check(LoadedBook book, Level level) {
         BookCheck check = new BookCheck(book, level);
+        BookLint.check(new LintBook(book.id().toString(), book.meta(), book.entries()))
+                .forEach(problem -> check.problems.add(new Problem(problem.file(), problem.message())));
         check.run();
         return check.problems;
     }
@@ -79,7 +91,7 @@ public final class BookCheck {
         book.meta().get("skin").ifPresent(skin -> {
             ResourceLocation folder = ResourceLocation.tryParse(skin);
             if (folder == null) {
-                problem("skin '" + skin + "' isn't a resource location");
+                // BookLint's
                 return;
             }
             for (String art : List.of("cover", "page", "ornament")) {
@@ -90,73 +102,145 @@ public final class BookCheck {
                 }
             }
         });
-        pages(book.meta());
-        if (book.isManual()) {
-            if (!book.entries().containsKey(Manual.INDEX)) {
-                problem("manual has no " + Manual.INDEX + ".md, so its title is its id and it has no landing text");
-            }
-        } else if (!book.entries().containsKey(LoadedBook.LORE_ENTRY)) {
-            problem("lore book has no " + LoadedBook.LORE_ENTRY + ".md; files: " + book.entries().keySet());
-        }
-
-        Set<String> categories = book.entries().keySet().stream().filter(name -> name.startsWith(Manual.CATEGORIES))
-                .map(name -> name.substring(Manual.CATEGORIES.length())).collect(Collectors.toSet());
         book.entries().forEach((entry, byLocale) -> byLocale.forEach((locale, text) -> {
             file = "assets/" + book.id().getNamespace() + "/books/" + book.id().getPath() + "/" + locale + "/" + entry + ".md";
-            entry(entry, locale, text, categories);
+            entry(entry, text);
         }));
     }
 
-    /** {@code pages:} is {@code single} or {@code spread} */
-    private void pages(BookText text) {
-        text.get(BookScreen.PAGES).filter(style -> !style.strip().equalsIgnoreCase(BookScreen.ONE_PAGE)
-                && !style.strip().equalsIgnoreCase(BookScreen.TWO_PAGES)).ifPresent(style ->
-                problem("pages '" + style + "' isn't single or spread, so the book shows two pages"));
-    }
-
-    private void entry(String entry, String locale, BookText text, Set<String> categories) {
-        text.get("icon").flatMap(Icons::problem).ifPresent(why -> problem("icon: " + why));
-        pages(text);
+    private void entry(String entry, BookText text) {
+        text.get("icon").flatMap(BookCheck::missing).ifPresent(why -> problem("icon: " + why));
         if (book.isManual() && !entry.equals(Manual.INDEX) && !entry.startsWith(Manual.CATEGORIES)) {
-            text.get("category").filter(category -> !categories.contains(category)).ifPresent(category ->
-                    problem("category '" + category + "' has no categories/" + category + ".md, so the entry is listed after the categories"));
-            text.get("advancement").filter(id -> ResourceLocation.tryParse(id) == null).ifPresent(id ->
-                    problem("advancement '" + id + "' isn't a resource location, so the entry is never hidden"));
+            text.get(ItemLookup.ITEMS).ifPresent(this::items);
+            vanillaIcon(entry, text);
         }
-        blocks(text.blocks(), locale);
+        blocks(text.blocks());
     }
 
-    private void blocks(List<Block> blocks, String locale) {
+    /** why a reference that parses isn't drawn as written; a reference that doesn't parse is BookLint's */
+    private static Optional<String> missing(String reference) {
+        return ItemReference.parse(reference).isPresent() ? Icons.problem(reference) : Optional.empty();
+    }
+
+    /**
+     * a vanilla icon that answers lookups in a mod's manual, though the entry shows the item nowhere else: a torch on
+     * "Bring Light" sends every torch in the game to the entry
+     */
+    private void vanillaIcon(String entry, BookText text) {
+        Optional<ItemReference> icon = text.get("icon").flatMap(ItemReference::parse)
+                .filter(ref -> ref.scheme().equals(ItemReference.ITEM) && ref.components().isEmpty()
+                        && ref.id().getNamespace().equals(ResourceLocation.DEFAULT_NAMESPACE));
+        String from = ItemMatch.lookupFrom(text.get(ItemLookup.LOOKUP_FROM), book.meta().get(ItemLookup.LOOKUP_FROM));
+        boolean answers = book.meta().get(ItemLookup.LOOKUP).map(value -> !value.strip().equalsIgnoreCase(ItemLookup.NEVER)).orElse(true)
+                && !from.equals(ItemLookup.FROM_ITEMS) && !from.equals(ItemLookup.FROM_NONE);
+        if (icon.isEmpty() || !answers || !modded() || shows(text, icon.get().id()) || !iconsTold.add(entry)) {
+            return;
+        }
+        ResourceLocation id = icon.get().id();
+        problem("icon " + id + " answers item lookups, so every " + id.getPath() + " in the game names this manual;"
+                + " if the icon is only for show, add lookup_from: items (the entry then answers only for its items:)");
+    }
+
+    /** whether the entry shows {@code item} besides as its icon: a spotlight, a recipe's result, or in {@code items:} */
+    private boolean shows(BookText text, ResourceLocation item) {
+        if (shows(text.blocks(), item)) {
+            return true;
+        }
+        for (String token : text.get(ItemLookup.ITEMS).map(ItemLookup::tokens).orElse(List.of())) {
+            boolean listed = token.startsWith("#")
+                    ? ItemLookup.tag(token).map(items -> items.stream().anyMatch(i -> item.equals(BuiltInRegistries.ITEM.getKey(i)))).orElse(false)
+                    : ItemReference.parse(token).map(ref -> ref.id().equals(item)).orElse(false);
+            if (listed) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean shows(List<Block> blocks, ResourceLocation item) {
         for (Block block : blocks) {
-            switch (block) {
-                case Block.Paragraph p -> text(p.text(), locale);
-                case Block.Heading h -> text(h.text(), locale);
-                case Block.ListItem item -> text(item.text(), locale);
-                case Block.Illustration i -> Icons.problem(i.item().text()).ifPresent(this::problem);
-                case Block.Fence f -> {
-                    fence(f);
-                    blocks(f.body(), locale);
+            if (block instanceof Block.Fence fence) {
+                boolean shown = switch (fence.kind()) {
+                    case "spotlight" -> ItemReference.parse(fence.argument()).map(ref -> ref.id().equals(item)).orElse(false);
+                    case "recipe" -> ItemLookup.recipeResult(fence.argument(), level)
+                            .map(stack -> item.equals(BuiltInRegistries.ITEM.getKey(stack.getItem()))).orElse(false);
+                    default -> false;
+                };
+                if (shown || shows(fence.body(), item)) {
+                    return true;
                 }
-                case Block.Table t -> table(t, locale);
-                case Block.Ornament o -> { }
-                case Block.PageBreak b -> {
-                    if (!b.style().isEmpty() && !b.style().equals(BookScreen.ONE_PAGE) && !b.style().equals(BookScreen.TWO_PAGES)) {
-                        problem("{page:" + b.style() + "} isn't single or spread, so it only breaks the page");
-                    }
+            }
+        }
+        return false;
+    }
+
+    /** whether any icon, spotlight or {@code items:} reference in the book is outside the minecraft namespace */
+    private boolean modded() {
+        if (modded == null) {
+            modded = book.entries().values().stream().flatMap(byLocale -> byLocale.values().stream()).anyMatch(text -> {
+                List<String> refs = new ArrayList<>();
+                text.get("icon").ifPresent(refs::add);
+                text.get(ItemLookup.ITEMS).map(ItemLookup::tokens).ifPresent(tokens -> tokens.stream()
+                        .filter(token -> !token.startsWith("#")).forEach(refs::add));
+                spotlights(text.blocks(), refs);
+                return refs.stream().flatMap(ref -> ItemReference.parse(ref).stream())
+                        .anyMatch(ref -> !ref.id().getNamespace().equals(ResourceLocation.DEFAULT_NAMESPACE));
+            });
+        }
+        return modded;
+    }
+
+    private static void spotlights(List<Block> blocks, List<String> into) {
+        for (Block block : blocks) {
+            if (block instanceof Block.Fence fence) {
+                if (fence.kind().equals("spotlight")) {
+                    into.add(fence.argument());
                 }
+                spotlights(fence.body(), into);
             }
         }
     }
 
+    /** each of {@code items:}'s references is an item, and each {@code #tag} a tag the game has */
+    private void items(String items) {
+        for (String token : ItemLookup.tokens(items)) {
+            if (token.startsWith("#")) {
+                if (ResourceLocation.tryParse(token.substring(1)) != null && ItemLookup.tag(token).isEmpty()) {
+                    problem("items: no item tag '" + token + "'");
+                }
+            } else {
+                missing(token).ifPresent(why -> problem("items: " + why));
+            }
+        }
+    }
+
+    private void blocks(List<Block> blocks) {
+        for (Block block : blocks) {
+            switch (block) {
+                case Block.Paragraph p -> text(p.text());
+                case Block.Heading h -> text(h.text());
+                case Block.ListItem item -> text(item.text());
+                case Block.Illustration i -> Icons.problem(i.item().text()).ifPresent(this::problem);
+                case Block.Fence f -> {
+                    fence(f);
+                    blocks(f.body());
+                }
+                case Block.Table t -> table(t);
+                case Block.Ornament o -> { }
+                // a page break's style is BookLint's
+                case Block.PageBreak b -> { }
+            }
+        }
+    }
+
+    /** whether what a fence names exists; an argument that doesn't parse, and an unknown kind, are BookLint's */
     private void fence(Block.Fence fence) {
         String argument = fence.argument().strip();
+        ResourceLocation id = argument.isEmpty() ? null : ResourceLocation.tryParse(argument);
         switch (fence.kind()) {
-            case "spotlight" -> Icons.problem(argument).ifPresent(why -> problem("spotlight: " + why));
+            case "spotlight" -> missing(argument).ifPresent(why -> problem("spotlight: " + why));
             case "recipe" -> {
-                ResourceLocation id = ResourceLocation.tryParse(argument);
-                if (id == null) {
-                    problem("recipe '" + argument + "' isn't a resource location");
-                } else {
+                if (id != null) {
                     level.getRecipeManager().byKey(id).ifPresentOrElse(holder -> {
                         if (RecipeView.of(holder.value(), level.registryAccess()).isEmpty()) {
                             problem("recipe '" + id + "' has no ingredients to show (its ingredients are worked out in code)");
@@ -166,50 +250,41 @@ public final class BookCheck {
             }
             case "image" -> {
                 String texture = argument.split("\\s+")[0];
-                ResourceLocation id = ResourceLocation.tryParse(texture);
-                if (id == null || !exists(id)) {
+                ResourceLocation image = texture.isEmpty() ? null : ResourceLocation.tryParse(texture);
+                if (image != null && !exists(image)) {
                     problem("no image '" + texture + "' (the full path, such as mymod:textures/gui/map.png)");
                 }
             }
             case "entity" -> {
-                Optional<EntityType<?>> type = EntityType.byString(argument);
-                if (type.isEmpty()) {
-                    problem("no mob '" + argument + "'");
-                } else if (!(type.get().create(level) instanceof LivingEntity)) {
-                    problem("'" + argument + "' isn't a mob; entity blocks draw living entities only");
+                String mob = EntityArgument.parse(argument).id();
+                if (ResourceLocation.tryParse(mob) != null) {
+                    Optional<EntityType<?>> type = EntityType.byString(mob);
+                    if (type.isEmpty()) {
+                        problem("no mob '" + mob + "'");
+                    } else if (!(type.get().create(level) instanceof LivingEntity)) {
+                        problem("'" + mob + "' isn't a mob; entity blocks draw living entities only");
+                    }
                 }
             }
-            default -> {
-                if (!fence.kind().isEmpty() && !FENCES.contains(fence.kind())) {
-                    problem("unknown block '```" + fence.kind() + "', shown as plain lines; the reader knows " + FENCES);
-                }
-            }
+            default -> { }
         }
     }
 
-    /** a table's rows, cells, icons and text */
-    private void table(Block.Table table, String locale) {
-        table.problems().forEach(why -> problem("table: " + why));
+    /** a table's icons and text; its rows and cells are BookLint's */
+    private void table(Block.Table table) {
         List<List<Block.Table.Cell>> rows = new ArrayList<>(table.rows());
         rows.add(table.header());
-        if (rows.stream().flatMap(List::stream).allMatch(Block.Table.Cell::isEmpty)) {
-            problem("table has nothing in it");
-        }
         for (List<Block.Table.Cell> row : rows) {
             for (Block.Table.Cell cell : row) {
                 cell.icons().forEach(icon -> Icons.problem(icon.text()).ifPresent(why -> problem("table icon: " + why)));
-                if (LATE_ICON.matcher(cell.text().getString()).find()) {
-                    problem("table cell '" + cell.text().getString() + "': only icons at the start of a cell are drawn; this one shows as text");
-                }
-                text(cell.text(), locale);
+                text(cell.text());
             }
         }
     }
 
-    /** a run of text's links and fonts */
-    private void text(Component text, String locale) {
+    /** a run of text's fonts; its links are BookLint's */
+    private void text(Component text) {
         text.visit((style, run) -> {
-            link(style, locale);
             if (!style.getFont().equals(Style.DEFAULT_FONT)) {
                 ResourceLocation font = style.getFont();
                 if (!exists(font.withPath(path -> "font/" + path + ".json"))) {
@@ -219,43 +294,6 @@ public final class BookCheck {
             }
             return Optional.empty();
         }, Style.EMPTY);
-    }
-
-    private void link(Style style, String locale) {
-        ClickEvent click = style.getClickEvent();
-        if (click == null || click.getAction() != ClickEvent.Action.CHANGE_PAGE || !click.getValue().startsWith(Inline.ENTRY_LINK)) {
-            return;
-        }
-        String target = click.getValue().substring(Inline.ENTRY_LINK.length());
-        if (!book.isManual()) {
-            problem("link to '" + target + "': links between entries only work in manuals");
-            return;
-        }
-        String[] parts = target.split("#", 2);
-        String entry = parts[0];
-        if (entry.equals(Manual.INDEX) || entry.startsWith(Manual.CATEGORIES) || !book.entries().containsKey(entry)) {
-            problem("link to '" + target + "': no entry '" + entry + "'");
-            return;
-        }
-        if (parts.length > 1) {
-            String anchor = parts[1];
-            boolean found = book.entry(entry, locale).map(text -> anchors(text.blocks()).contains(anchor)).orElse(false);
-            if (!found) {
-                problem("link to '" + target + "': entry '" + entry + "' has no heading {#" + anchor + "}");
-            }
-        }
-    }
-
-    private static Set<String> anchors(List<Block> blocks) {
-        Set<String> anchors = new HashSet<>();
-        for (Block block : blocks) {
-            if (block instanceof Block.Heading h && !h.anchor().isEmpty()) {
-                anchors.add(h.anchor());
-            } else if (block instanceof Block.Fence f) {
-                anchors.addAll(anchors(f.body()));
-            }
-        }
-        return anchors;
     }
 
     private boolean exists(ResourceLocation resource) {

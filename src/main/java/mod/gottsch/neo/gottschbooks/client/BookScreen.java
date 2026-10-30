@@ -18,11 +18,16 @@
 package mod.gottsch.neo.gottschbooks.client;
 
 import mod.gottsch.neo.gottschbooks.GottschBooks;
+import mod.gottsch.neo.gottschbooks.core.ItemMatch;
 import mod.gottsch.neo.gottschbooks.core.text.Block;
 import mod.gottsch.neo.gottschbooks.core.text.BookText;
+import mod.gottsch.neo.gottschbooks.core.text.EntityArgument;
 import mod.gottsch.neo.gottschbooks.core.text.Inline;
+import mod.gottsch.neo.gottschbooks.core.text.LoreText;
+import mod.gottsch.neo.gottschbooks.core.text.TextSearch;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.font.glyphs.BakedGlyph;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
@@ -36,6 +41,7 @@ import net.minecraft.sounds.SoundEvents;
 import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import org.lwjgl.glfw.GLFW;
 
@@ -60,12 +66,20 @@ import java.util.Optional;
  * Two modes, from the book's {@code book.md}:
  * <ul>
  *     <li><b>Lore book</b>: one text, opening on a title page (icon, title, author), turned page by page. The reader
- *     remembers the section you were on for each book until the game closes.</li>
+ *     remembers the section you were on for each book until the game closes. A book in chapters ({@link LoreText})
+ *     starts each on a new page and, with two or more, lists them on the title page; a click on one, or a
+ *     {@code [text](entry:02-the-storm#anchor)} link, jumps to it, and Back and Contents sit above the book.</li>
  *     <li><b>Manual</b> ({@link Manual}): opens on the contents (the landing text, then each category's entries);
  *     a click opens an entry, {@code [text](entry:id#anchor)} links jump between entries, and Back and Contents sit
  *     above the book. Entries can show {@code spotlight}, {@code recipe}, {@code image} and {@code entity}
- *     blocks.</li>
+ *     blocks. Search (above the book, or Ctrl+F) finds the entries that mention every word typed. Entries the
+ *     player hasn't opened yet ({@link ReadingLog}) have a red dot on the contents, as do their categories, and the
+ *     contents counts them with a "mark all read" link.</li>
  * </ul>
+ * In either, a page can be bookmarked (Bookmark above the book, or Ctrl+D): each bookmark is a ribbon out of the
+ * book's right edge, which a click opens and a right-click removes. A bookmark keeps the block its page starts with,
+ * so it finds its page however the window lays the text out.
+ * <p>
  * Moved from Magic Treasures' {@code LoreBookScreen}.
  *
  * @author Mark Gottschling on 10/17/2026
@@ -77,6 +91,8 @@ public class BookScreen extends Screen {
     private static final int INK = 0xFF3B2A1A;
     private static final int NOTE = 0xFF7A6650;
     private static final int LINK = 0xFF1E4FA0;
+    /** the dot after an entry the player hasn't opened yet, and the room it takes */
+    private static final int NEW_MARK = 0xFFB03A2E, NEW_MARK_ROOM = 8;
     private static final int SLOT = 0x30000000;
     private static final int LINE_H = 10;
     private static final int ROW_H = 18;
@@ -93,6 +109,10 @@ public class BookScreen extends Screen {
     private static final float TITLE_SCALE = 1.5F;
     /** illustrations aim for this, rounded so each item pixel covers whole screen pixels (see {@link #init}) */
     private static final double ILLUSTRATION_TARGET = 1.5;
+    /** the {@code entry} of a manual's search page, which no entry id can be */
+    private static final String SEARCH = "\u0000search";
+    /** the search box's frame, drawn on the page, and how far its text sits inside it */
+    private static final int SEARCH_BOX_H = 14, SEARCH_INSET_X = 4, SEARCH_INSET_Y = 3;
 
     /** where each book was left, for this game session: a lore book's section, a manual's entry and section */
     private static final Map<ResourceLocation, Place> LAST_PLACE = new HashMap<>();
@@ -108,6 +128,11 @@ public class BookScreen extends Screen {
     // lore book
     private final Optional<Component> author;
     private final List<Block> loreBlocks;
+    /** the chapters, each knowing its first block in {@link #loreBlocks}; empty for a book of text.md alone */
+    private final List<LoreText.Chapter> chapters;
+    /** where to open a lore book ({@code chapter} or {@code chapter#anchor}), once the layout exists */
+    @Nullable
+    private String pendingChapter;
     // manual
     @Nullable
     private final Manual manual;
@@ -118,6 +143,19 @@ public class BookScreen extends Screen {
     /** an anchor to open at, once the layout exists */
     @Nullable
     private String pendingAnchor;
+    /** an item whose page to open at, once the layout exists */
+    @Nullable
+    private ItemStack pendingItem;
+    /** the screen to go back to on closing; null to close to the game */
+    @Nullable
+    private Screen parent;
+    /** what the search page searches for, kept while reading what it found */
+    private String query = "";
+    @Nullable
+    private ManualSearch search;
+    private List<ManualSearch.Result> results = List.of();
+    @Nullable
+    private EditBox searchBox;
 
     // layout, recomputed in init() (it runs again when the window is resized)
     private int bookX, bookY, bookW, bookH;
@@ -139,9 +177,10 @@ public class BookScreen extends Screen {
     private final List<ItemHit> itemHits = new ArrayList<>();
     private final List<LinkHit> linkHits = new ArrayList<>();
     private final List<TextHit> textHits = new ArrayList<>();
+    private final List<TabHit> tabHits = new ArrayList<>();
 
     private enum Kind { TEXT, BLANK, ORNAMENT, TITLE, ENTRY_TITLE, ILLUSTRATION, SPOTLIGHT, RECIPE, IMAGE, ENTITY,
-        CATEGORY, LINK_ROW, BREAK, HEADING, TABLE_HEADER, TABLE_ROW }
+        CATEGORY, LINK_ROW, BREAK, HEADING, TABLE_HEADER, TABLE_ROW, SEARCH_BOX }
 
     /** a page's lines, and whether it is a single wide page ({@code {page:single}}) */
     private record Page(List<Line> lines, boolean wide) {}
@@ -168,15 +207,21 @@ public class BookScreen extends Screen {
         Component label;
         String target;
         String anchor;
-        /** a heading's text scale, and whether a rule goes under it */
+        /** a heading's text scale, and whether a rule goes under it; a mob's scale */
         float scale = 1F;
         boolean rule;
         RecipeView recipe;
         ImageView image;
         LivingEntity entity;
+        /** how far the mob's model reaches, measured when it is first drawn */
+        ModelHeight model;
         /** a table header or row: its table, and which row (-1 for the header) */
         TableView table;
         int row;
+        /** a contents row for an entry not yet opened, or a category holding one */
+        boolean fresh;
+        /** which of the text's top-level blocks the line belongs to, for bookmarks */
+        int block;
 
         Line(Kind kind, int height, int section) {
             this.kind = kind;
@@ -201,17 +246,34 @@ public class BookScreen extends Screen {
 
     private record TextHit(int x, int y, FormattedCharSequence text) {}
 
-    /** a lore book */
+    private record TabHit(int x, int y, int w, int h, ReadingLog.Bookmark mark) {
+        boolean contains(double mx, double my) {
+            return mx >= x && mx < x + w && my >= y && my < y + h;
+        }
+    }
+
+    /** a lore book of one text */
     public BookScreen(LoadedBook book, BookText text, ItemStack icon) {
-        super(loreTitle(book, text));
+        this(book, LoreText.of(text), icon, Optional.empty());
+    }
+
+    /** a lore book, opened at {@code target} ({@code chapter} or {@code chapter#anchor}), else where it was left */
+    public BookScreen(LoadedBook book, LoreText lore, ItemStack icon, Optional<String> target) {
+        super(loreTitle(book, lore.text()));
+        BookText text = lore.text();
         this.bookId = book.id();
         this.icon = icon;
         this.author = text.get("author").map(Component::literal);
         List<Block> body = new ArrayList<>(text.blocks());
+        int removed = 0;
         if (text.get("title").isEmpty() && !body.isEmpty() && body.getFirst() instanceof Block.Heading h && h.level() == 1) {
             body.removeFirst();
+            removed = 1;
         }
         this.loreBlocks = body;
+        int shift = removed;
+        this.chapters = lore.chapters().stream().map(c -> new LoreText.Chapter(c.name(), c.anchor(), c.title(), c.block() - shift)).toList();
+        this.pendingChapter = target.orElse(null);
         this.manual = null;
         ResourceLocation skin = book.skin();
         this.cover = art(skin, "cover");
@@ -227,6 +289,7 @@ public class BookScreen extends Screen {
         this.icon = icon;
         this.author = Optional.empty();
         this.loreBlocks = List.of();
+        this.chapters = List.of();
         this.manual = manual;
         ResourceLocation skin = book.skin();
         this.cover = art(skin, "cover");
@@ -245,6 +308,12 @@ public class BookScreen extends Screen {
                 entry = last.entry();
             }
         }
+    }
+
+    /** opens at the page showing {@code item} (see {@link #pageOfItem}), and closes back to {@code parent} */
+    public void showing(ItemStack item, @Nullable Screen parent) {
+        this.pendingItem = item;
+        this.parent = parent;
     }
 
     /** {@code title:} in the front matter, else a leading {@code # heading}, else the book's id */
@@ -303,9 +372,17 @@ public class BookScreen extends Screen {
         headingScale2 = (float) (Math.max(1, Math.round(1.25 * guiScale)) / guiScale);
 
         paginate();
-        if (pendingAnchor != null) {
+        markOpened();
+        int chapterPage = pendingChapter == null ? -1 : pageOfLoreTarget(pendingChapter);
+        pendingChapter = null;
+        if (chapterPage >= 0) {
+            view = viewOf(chapterPage);
+        } else if (pendingAnchor != null) {
             view = viewOf(pageOfAnchor(pendingAnchor));
             pendingAnchor = null;
+        } else if (pendingItem != null) {
+            view = viewOf(pageOfItem(pendingItem));
+            pendingItem = null;
         } else {
             view = Math.min(viewOf(pageOfSection(anchor)), lastView());
         }
@@ -313,7 +390,23 @@ public class BookScreen extends Screen {
         int buttonY = bookY + bookH - COVER_BORDER - 16;
         back = addRenderableWidget(new PageButton(bookX + COVER_BORDER + 6, buttonY, false, b -> turn(-1), true));
         forward = addRenderableWidget(new PageButton(bookX + bookW - COVER_BORDER - 6 - 23, buttonY, true, b -> turn(1), true));
+        if (isManual()) {
+            // no border or shadow, in ink: the page draws the frame (see drawPage), so the box looks written on
+            searchBox = new EditBox(font, 0, 0, pageTextW, SEARCH_BOX_H - SEARCH_INSET_Y, Component.translatable("gottschbooks.search"));
+            searchBox.setBordered(false);
+            searchBox.setTextShadow(false);
+            searchBox.setTextColor(INK);
+            searchBox.setMaxLength(64);
+            searchBox.setHint(Component.translatable("gottschbooks.search.hint")
+                    .withStyle(style -> style.withColor(NOTE & 0xFFFFFF).withItalic(true)));
+            searchBox.setValue(query);
+            searchBox.setResponder(this::searched);
+            addRenderableWidget(searchBox);
+        }
         updateButtons();
+        if (SEARCH.equals(entry)) {
+            focusSearch();
+        }
     }
 
     private int remembered() {
@@ -332,14 +425,25 @@ public class BookScreen extends Screen {
         /** the style being laid out; {@code textW} follows it */
         boolean wide = wantsOnePage();
         int section;
+        /** the top-level block being laid out */
+        int block;
         boolean textBefore;
         boolean listBefore;
 
         Line add(Kind kind, int height) {
             Line line = new Line(kind, height, section);
             line.wide = wide;
+            line.block = block;
             lines.add(line);
             return line;
+        }
+
+        /** the text's top-level blocks, each line knowing which one it came from */
+        void topLevel(List<Block> blocks) {
+            for (int i = 0; i < blocks.size(); i++) {
+                block = i;
+                block(blocks.get(i));
+            }
         }
 
         void blank() {
@@ -476,12 +580,14 @@ public class BookScreen extends Screen {
                     }
                 }
                 case "entity" -> {
-                    Optional<LivingEntity> entity = entity(fence.argument());
+                    EntityArgument argument = EntityArgument.parse(fence.argument());
+                    Optional<LivingEntity> entity = entity(argument.id());
                     if (entity.isPresent()) {
                         Line line = add(Kind.ENTITY, 70);
                         line.entity = entity.get();
+                        line.scale = argument.scale();
                     } else {
-                        missing("entity", fence.argument());
+                        missing("entity", argument.id());
                     }
                 }
                 default -> { }
@@ -561,10 +667,19 @@ public class BookScreen extends Screen {
         textW = wantsOnePage() ? wideTextW : pageTextW;
         Flow flow = new Flow();
         if (!isManual()) {
+            if (hasContents()) {
+                // before the text's own blocks, so a bookmark on the title or the contents finds its page
+                flow.block = -2;
+            }
             flow.add(Kind.TITLE, titleHeight(title, author.isPresent()));
-            flow.blocks(loreBlocks);
+            if (hasContents()) {
+                chapterContents(flow);
+            }
+            flow.topLevel(loreBlocks);
         } else if (entry == null) {
             contents(flow);
+        } else if (SEARCH.equals(entry)) {
+            searchPage(flow);
         } else {
             Manual.Entry current = manual.entry(entry).orElseThrow();
             Line title = flow.add(Kind.ENTRY_TITLE, entryTitleHeight(current.title()));
@@ -574,14 +689,47 @@ public class BookScreen extends Screen {
             if (!blocks.isEmpty() && blocks.getFirst() instanceof Block.Heading h && h.level() == 1) {
                 blocks.removeFirst();
             }
-            flow.blocks(blocks);
+            flow.topLevel(blocks);
         }
         return flow.lines;
     }
 
-    /** a manual's opening: its title, the landing text, then each category with its entries */
+    /** a lore book with two or more chapters lists them after its title */
+    private boolean hasContents() {
+        return chapters.size() >= 2;
+    }
+
+    /** a lore book's chapters, each a row that opens it; the text starts on the next page */
+    private void chapterContents(Flow flow) {
+        flow.block = -1;
+        flow.blank();
+        Line heading = flow.add(Kind.CATEGORY, ROW_H + 2);
+        heading.label = Component.translatable("gottschbooks.book.contents");
+        heading.keep = ROW_H;
+        for (LoreText.Chapter chapter : chapters) {
+            Line row = flow.add(Kind.LINK_ROW, ROW_H);
+            row.label = chapter.title();
+            row.target = chapter.name();
+        }
+        flow.add(Kind.BREAK, 0);
+        flow.textBefore = false;
+        flow.listBefore = false;
+    }
+
+    /**
+     * a manual's opening: its title, how many entries are new (with a link marking them all read), the landing text,
+     * then each category with its entries
+     */
     private void contents(Flow flow) {
         flow.add(Kind.TITLE, titleHeight(title, false));
+        int unread = unread().size();
+        if (unread > 0) {
+            Component markRead = Component.translatable("gottschbooks.book.mark_read").withStyle(style -> style
+                    .withColor(LINK & 0xFFFFFF).withUnderlined(true)
+                    .withClickEvent(new ClickEvent(ClickEvent.Action.CHANGE_PAGE, MARK_READ)));
+            flow.text(Component.translatable("gottschbooks.book.new", unread).append("  ").append(markRead), NOTE, null);
+            flow.textBefore = true;
+        }
         flow.blocks(manual.landing());
         for (Manual.Category category : manual.categories()) {
             List<Manual.Entry> entries = manual.entriesIn(category.id());
@@ -591,6 +739,7 @@ public class BookScreen extends Screen {
             flow.blank();
             Line heading = flow.add(Kind.CATEGORY, ROW_H + 2);
             heading.label = category.title();
+            heading.fresh = entries.stream().anyMatch(entry -> !ReadingLog.isOpened(bookId, entry.id()));
             heading.item = Icons.stack(category.icon()).orElse(ItemStack.EMPTY);
             heading.keep = ROW_H;
             flow.textBefore = false;
@@ -607,11 +756,124 @@ public class BookScreen extends Screen {
         }
     }
 
-    private void row(Flow flow, Manual.Entry entry) {
+    private Line row(Flow flow, Manual.Entry entry) {
         Line row = flow.add(Kind.LINK_ROW, ROW_H);
         row.label = entry.title();
         row.item = Icons.stack(entry.icon()).orElse(ItemStack.EMPTY);
         row.target = entry.id();
+        row.fresh = !ReadingLog.isOpened(bookId, entry.id());
+        return row;
+    }
+
+    /** the entries the player can read but hasn't opened */
+    private List<Manual.Entry> unread() {
+        return manual.allEntries().stream().filter(Manual.Entry::unlocked)
+                .filter(entry -> !ReadingLog.isOpened(bookId, entry.id())).toList();
+    }
+
+    // ---- bookmarks ----
+
+    /** what bookmarks here are kept under: the entry being read, {@code ""} in a lore book; null on the contents or search */
+    @Nullable
+    private String bookmarkEntry() {
+        if (!isManual()) {
+            return "";
+        }
+        return entry == null || SEARCH.equals(entry) ? null : entry;
+    }
+
+    /** the bookmark on the pages showing now, if any */
+    private Optional<ReadingLog.Bookmark> bookmarkHere() {
+        String at = bookmarkEntry();
+        if (at == null) {
+            return Optional.empty();
+        }
+        return ReadingLog.bookmarks(bookId).stream()
+                .filter(mark -> mark.entry().equals(at) && viewOf(pageOfBlock(mark.block())) == view).findFirst();
+    }
+
+    /** bookmarks the pages showing (by the first block that starts on them), or removes their bookmark */
+    private void toggleBookmark() {
+        String at = bookmarkEntry();
+        View shown = views.get(Math.min(view, views.size() - 1));
+        if (at == null || shown.count() == 0) {
+            return;
+        }
+        Optional<ReadingLog.Bookmark> here = bookmarkHere();
+        if (here.isPresent()) {
+            ReadingLog.removeBookmark(bookId, here.get());
+            return;
+        }
+        List<Line> lines = pages.get(shown.first()).lines();
+        List<Line> before = shown.first() > 0 ? pages.get(shown.first() - 1).lines() : List.of();
+        // a paragraph carried over from the page before belongs to that page; the first block begun here marks this one
+        int carried = before.isEmpty() ? Integer.MIN_VALUE : before.get(before.size() - 1).block;
+        int block = lines.stream().mapToInt(line -> line.block).filter(b -> b != carried).findFirst()
+                .orElse(lines.isEmpty() ? 0 : lines.get(0).block);
+        String text = lines.stream().map(BookScreen::lineText).map(String::strip).filter(t -> !t.isEmpty()).findFirst().orElse("");
+        ReadingLog.addBookmark(bookId, new ReadingLog.Bookmark(at, block, text.length() > 40 ? text.substring(0, 40).strip() + "…" : text));
+    }
+
+    /** opens a bookmark's page, through its entry in a manual */
+    private void goTo(ReadingLog.Bookmark mark) {
+        if (isManual()) {
+            if (manual.entry(mark.entry()).isEmpty()) {
+                return;
+            }
+            history.push(new Place(entry, view));
+            show(mark.entry(), null, -1);
+        } else {
+            minecraft.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.BOOK_PAGE_TURN, 1.0F));
+        }
+        view = viewOf(pageOfBlock(mark.block()));
+        updateButtons();
+    }
+
+    /** the first page with a line of {@code block} or a later one; else the last page */
+    private int pageOfBlock(int block) {
+        for (int p = 0; p < pages.size(); p++) {
+            for (Line line : pages.get(p).lines()) {
+                if (line.block >= block) {
+                    return p;
+                }
+            }
+        }
+        return Math.max(0, pages.size() - 1);
+    }
+
+    /** records the entry on show as read */
+    private void markOpened() {
+        if (isManual() && entry != null && !SEARCH.equals(entry)) {
+            ReadingLog.open(bookId, entry);
+        }
+    }
+
+    /**
+     * the search page: room for the search box (a widget, placed by {@link #updateButtons}), then what the query
+     * finds, each entry with a line of its text that a click also opens
+     */
+    private void searchPage(Flow flow) {
+        flow.add(Kind.SEARCH_BOX, SEARCH_BOX_H + 8);
+        if (TextSearch.terms(query).isEmpty()) {
+            results = List.of();
+            flow.text(Component.translatable("gottschbooks.search.prompt"), NOTE, null);
+            return;
+        }
+        if (search == null) {
+            search = new ManualSearch(manual);
+        }
+        results = search.find(query, font, textW);
+        flow.text(results.isEmpty() ? Component.translatable("gottschbooks.search.none", query.strip())
+                : Component.translatable("gottschbooks.search.found", results.size()), NOTE, null);
+        for (ManualSearch.Result result : results) {
+            flow.add(Kind.BLANK, LIST_GAP);
+            Line row = row(flow, result.entry());
+            result.snippet().ifPresent(snippet -> {
+                row.keep = LINE_H;
+                ClickEvent open = new ClickEvent(ClickEvent.Action.CHANGE_PAGE, Inline.ENTRY_LINK + result.entry().id());
+                flow.text(snippet.copy().withStyle(style -> style.withClickEvent(open)), NOTE, null);
+            });
+        }
     }
 
     private Optional<RecipeView> recipe(String argument) {
@@ -756,14 +1018,93 @@ public class BookScreen extends Screen {
     }
 
     private int pageOfAnchor(String anchor) {
-        for (int p = 0; p < pages.size(); p++) {
+        return Math.max(0, pageOfAnchor(anchor, 0));
+    }
+
+    /** the first page from {@code from} on with the heading {@code {#anchor}}; -1 when there is none */
+    private int pageOfAnchor(String anchor, int from) {
+        for (int p = from; p < pages.size(); p++) {
             for (Line line : pages.get(p).lines()) {
                 if (anchor.equals(line.anchor)) {
                     return p;
                 }
             }
         }
+        return -1;
+    }
+
+    /**
+     * the page a lore book's link leads to: {@code chapter} (its first page), {@code chapter#anchor} (the heading in
+     * that chapter), or {@code text#anchor} (in text.md); -1 when there is no such chapter or heading
+     */
+    private int pageOfLoreTarget(String target) {
+        String[] parts = target.split("#", 2);
+        int from = 0;
+        if (!parts[0].equals(LoreText.TEXT)) {
+            Optional<LoreText.Chapter> chapter = chapters.stream().filter(c -> c.name().equals(parts[0])).findFirst();
+            if (chapter.isEmpty()) {
+                return -1;
+            }
+            from = pageOfBlock(chapter.get().block());
+        }
+        return parts.length > 1 ? pageOfAnchor(parts[1], from) : from;
+    }
+
+    /**
+     * the first page with a spotlight of {@code item} written with components it has (a Dungeon Map among maps), else
+     * with a spotlight of the item, else with a recipe that makes it, else the first page
+     */
+    private int pageOfItem(ItemStack item) {
+        for (int pass = 0; pass < 3; pass++) {
+            Kind kind = pass < 2 ? Kind.SPOTLIGHT : Kind.RECIPE;
+            for (int p = 0; p < pages.size(); p++) {
+                for (Line line : pages.get(p).lines()) {
+                    ItemStack shown = line.kind != kind ? ItemStack.EMPTY : kind == Kind.SPOTLIGHT ? line.item : line.recipe.result();
+                    boolean specific = pass > 0 || !shown.getComponentsPatch().isEmpty() && ItemMatch.matches(shown.getComponentsPatch(), item);
+                    if (shown.is(item.getItem()) && specific) {
+                        return p;
+                    }
+                }
+            }
+        }
         return 0;
+    }
+
+    /** the first page with text holding one of {@code terms}, trying them in order; else the first page */
+    private int pageOfText(List<String> terms) {
+        for (String term : terms) {
+            for (int p = 0; p < pages.size(); p++) {
+                for (Line line : pages.get(p).lines()) {
+                    if (TextSearch.indexOf(lineText(line), term, 0) >= 0) {
+                        return p;
+                    }
+                }
+            }
+        }
+        return 0;
+    }
+
+    /** a line's text, as search sees it ("" for a line without any) */
+    private static String lineText(Line line) {
+        StringBuilder text = new StringBuilder();
+        switch (line.kind) {
+            case TEXT, HEADING -> plain(line.text, text);
+            case SPOTLIGHT -> text.append(line.item.getHoverName().getString());
+            case ILLUSTRATION -> text.append(line.item.getHoverName().getString()).append(' ').append(line.label.getString());
+            case TABLE_HEADER, TABLE_ROW -> {
+                TableView.Row row = line.row < 0 ? line.table.header() : line.table.rows().get(line.row);
+                row.cells().forEach(cell -> cell.lines().forEach(seq -> plain(seq, text.append(' '))));
+            }
+            default -> { }
+        }
+        return text.toString();
+    }
+
+    private static void plain(FormattedCharSequence seq, StringBuilder into) {
+        seq.accept((index, style, codepoint) -> {
+            into.appendCodePoint(codepoint);
+            return true;
+        });
     }
 
     private int currentSection() {
@@ -789,11 +1130,60 @@ public class BookScreen extends Screen {
     private void updateButtons() {
         back.visible = view > 0;
         forward.visible = view < lastView();
+        if (searchBox != null) {
+            // on the search page's first page only, over the room left for it
+            searchBox.visible = SEARCH.equals(entry) && view == 0;
+            if (searchBox.visible) {
+                searchBox.setX(bookX + COVER_BORDER + PAGE_PAD + SEARCH_INSET_X);
+                searchBox.setY(bookY + COVER_BORDER + PAGE_PAD + SEARCH_INSET_Y);
+                searchBox.setWidth((views.getFirst().wide() ? wideTextW : pageTextW) - 2 * SEARCH_INSET_X);
+            } else if (getFocused() == searchBox) {
+                setFocused(null);
+            }
+        }
+    }
+
+    /** opens the search page at its first page, ready to type */
+    private void openSearch() {
+        if (!isManual()) {
+            return;
+        }
+        if (!SEARCH.equals(entry)) {
+            history.push(new Place(entry, view));
+            show(SEARCH, null, 0);
+        } else if (view != 0) {
+            view = 0;
+            updateButtons();
+        }
+        focusSearch();
+    }
+
+    private void focusSearch() {
+        if (searchBox != null && searchBox.visible) {
+            setFocused(searchBox);
+        }
+    }
+
+    /** the search box changed: search again */
+    private void searched(String text) {
+        query = text;
+        paginate();
+        view = 0;
+        updateButtons();
     }
 
     /** opens {@code target} ({@code entry}, {@code entry#anchor}, or null for the contents), remembering where we were */
     private void go(@Nullable String target) {
         if (!isManual()) {
+            // a lore book stays one text: a link turns to its page, and null is the contents
+            int to = target == null ? (hasContents() ? pageOfBlock(-1) : -1) : pageOfLoreTarget(target);
+            if (to < 0) {
+                return;
+            }
+            history.push(new Place(null, view));
+            view = viewOf(to);
+            updateButtons();
+            minecraft.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.BOOK_PAGE_TURN, 1.0F));
             return;
         }
         String to = null, anchor = null;
@@ -805,8 +1195,14 @@ public class BookScreen extends Screen {
                 return;
             }
         }
+        boolean fromSearch = SEARCH.equals(entry);
         history.push(new Place(entry, view));
         show(to, anchor, -1);
+        // a search result opens where its words are
+        if (fromSearch && anchor == null && to != null) {
+            view = viewOf(pageOfText(TextSearch.terms(query)));
+            updateButtons();
+        }
     }
 
     private void goBack() {
@@ -820,6 +1216,7 @@ public class BookScreen extends Screen {
     private void show(@Nullable String to, @Nullable String anchor, int atView) {
         entry = to;
         paginate();
+        markOpened();
         view = anchor != null ? viewOf(pageOfAnchor(anchor)) : Math.max(0, Math.min(atView, lastView()));
         updateButtons();
         minecraft.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.BOOK_PAGE_TURN, 1.0F));
@@ -827,6 +1224,14 @@ public class BookScreen extends Screen {
 
     @Override
     public boolean handleComponentClicked(@Nullable Style style) {
+        if (style != null && style.getClickEvent() != null && style.getClickEvent().getAction() == ClickEvent.Action.CHANGE_PAGE
+                && style.getClickEvent().getValue().equals(MARK_READ) && isManual()) {
+            ReadingLog.openAll(bookId, unread().stream().map(Manual.Entry::id).toList());
+            paginate();
+            view = Math.min(view, lastView());
+            updateButtons();
+            return true;
+        }
         if (style != null && style.getClickEvent() != null && style.getClickEvent().getAction() == ClickEvent.Action.CHANGE_PAGE
                 && style.getClickEvent().getValue().startsWith(Inline.ENTRY_LINK)) {
             go(style.getClickEvent().getValue().substring(Inline.ENTRY_LINK.length()));
@@ -837,12 +1242,24 @@ public class BookScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        for (TabHit tab : tabHits) {
+            if (tab.contains(mouseX, mouseY)) {
+                if (button == 0) {
+                    goTo(tab.mark());
+                } else if (button == 1) {
+                    ReadingLog.removeBookmark(bookId, tab.mark());
+                }
+                return true;
+            }
+        }
         if (button == 0) {
             for (LinkHit hit : linkHits) {
                 if (hit.contains(mouseX, mouseY)) {
                     switch (hit.target()) {
+                        case NAV_BOOKMARK -> toggleBookmark();
                         case NAV_BACK -> goBack();
                         case NAV_CONTENTS -> go(null);
+                        case NAV_SEARCH -> openSearch();
                         default -> go(hit.target());
                     }
                     return true;
@@ -869,6 +1286,25 @@ public class BookScreen extends Screen {
 
     @Override
     public boolean keyPressed(int key, int scanCode, int modifiers) {
+        // while typing a search, keys are text (Enter opens the first entry found); Escape still closes the book
+        if (searchBox != null && searchBox.visible && getFocused() == searchBox && key != GLFW.GLFW_KEY_ESCAPE) {
+            if (key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER) {
+                if (!results.isEmpty()) {
+                    go(results.getFirst().entry().id());
+                }
+            } else {
+                searchBox.keyPressed(key, scanCode, modifiers);
+            }
+            return true;
+        }
+        if (key == GLFW.GLFW_KEY_D && hasControlDown() && bookmarkEntry() != null) {
+            toggleBookmark();
+            return true;
+        }
+        if (key == GLFW.GLFW_KEY_F && hasControlDown() && isManual()) {
+            openSearch();
+            return true;
+        }
         // through the buttons, for their page-turn sound; a hidden button means there's no page that way
         if (key == GLFW.GLFW_KEY_LEFT || key == GLFW.GLFW_KEY_PAGE_UP) {
             if (back.visible) {
@@ -882,7 +1318,7 @@ public class BookScreen extends Screen {
             }
             return true;
         }
-        if (key == GLFW.GLFW_KEY_BACKSPACE && isManual() && !history.isEmpty()) {
+        if (key == GLFW.GLFW_KEY_BACKSPACE && !history.isEmpty()) {
             goBack();
             return true;
         }
@@ -903,6 +1339,15 @@ public class BookScreen extends Screen {
     }
 
     @Override
+    public void onClose() {
+        if (parent != null) {
+            minecraft.setScreen(parent);
+        } else {
+            super.onClose();
+        }
+    }
+
+    @Override
     public void removed() {
         LAST_PLACE.put(bookId, new Place(entry, currentSection()));
         super.removed();
@@ -910,7 +1355,13 @@ public class BookScreen extends Screen {
 
     // ---- drawing ----
 
-    private static final String NAV_BACK = "\u0000back", NAV_CONTENTS = "\u0000contents";
+    /** the click value of the contents' "mark all read" link */
+    private static final String MARK_READ = "\u0000mark_read";
+    private static final String NAV_BOOKMARK = "\u0000bookmark";
+    /** the ribbons' colours, in turn, and their size: how far one sticks out, tucked under the cover, and apart */
+    private static final int[] RIBBONS = {0xFFB03A2E, 0xFF2E6DB0, 0xFF3A8A3A, 0xFFC08A1E, 0xFF7A3AA0, 0xFF2E9A9A};
+    private static final int RIBBON_OUT = 7, RIBBON_TUCK = 5, RIBBON_H = 11, RIBBON_STEP = 15;
+    private static final String NAV_BACK = "\u0000back", NAV_CONTENTS = "\u0000contents", NAV_SEARCH = "\u0000search";
 
     /** the book is drawn as the background, so the page buttons sit on top of it */
     @Override
@@ -919,6 +1370,8 @@ public class BookScreen extends Screen {
         itemHits.clear();
         linkHits.clear();
         textHits.clear();
+        // under the cover, so each ribbon seems to come from between the pages
+        drawRibbons(g, mouseX, mouseY);
         nineSlice(g, cover, bookX, bookY, bookW, bookH, COVER_BORDER);
         View shown = views.get(Math.min(view, views.size() - 1));
         // one wide page across the book, or a spread's two (the second blank when the spread has one page)
@@ -939,20 +1392,77 @@ public class BookScreen extends Screen {
                 g.drawString(font, number, x + (w - font.width(number)) / 2, y + pageH - 12, NOTE, false);
             }
         }
-        if (isManual()) {
-            drawNav(g, mouseX, mouseY);
+        drawNav(g, mouseX, mouseY);
+    }
+
+    /** each bookmark as a ribbon out of the book's right edge; the one for the pages showing sticks out further */
+    private void drawRibbons(GuiGraphics g, int mouseX, int mouseY) {
+        tabHits.clear();
+        List<ReadingLog.Bookmark> marks = ReadingLog.bookmarks(bookId);
+        Optional<ReadingLog.Bookmark> here = bookmarkHere();
+        int y = bookY + COVER_BORDER + 4;
+        for (int i = 0; i < marks.size(); i++) {
+            ReadingLog.Bookmark mark = marks.get(i);
+            // an entry since locked, or gone from the manual, keeps its bookmark but shows none
+            if (isManual() && manual.entry(mark.entry()).isEmpty()) {
+                continue;
+            }
+            int edge = bookX + bookW;
+            int out = RIBBON_OUT + (here.filter(mark::equals).isPresent() ? 3 : 0);
+            TabHit hit = new TabHit(edge, y, out + 1, RIBBON_H, mark);
+            if (hit.contains(mouseX, mouseY)) {
+                out++;
+            }
+            int color = RIBBONS[i % RIBBONS.length], shade = (color & 0xFEFEFE) >> 1 | 0xFF000000;
+            int notch = y + RIBBON_H / 2;
+            // the ribbon, its end cut in a notch (drawn as the parts above and below it), with a darker underside
+            g.fill(edge - RIBBON_TUCK, y, edge + out - 2, y + RIBBON_H, color);
+            g.fill(edge + out - 2, y, edge + out, notch - 1, color);
+            g.fill(edge + out - 2, notch + 1, edge + out, y + RIBBON_H, color);
+            g.fill(edge - RIBBON_TUCK, y + RIBBON_H - 1, edge + out, y + RIBBON_H, shade);
+            tabHits.add(hit);
+            y += RIBBON_STEP;
         }
     }
 
-    /** Back and Contents, above the book */
+    /**
+     * Back and Bookmark on the left, Search (a manual's) and Contents (a manual's, or a lore book's chapter list) on
+     * the right, above the book
+     */
     private void drawNav(GuiGraphics g, int mouseX, int mouseY) {
         int y = bookY - LINE_H;
+        int left = bookX + 4;
         if (!history.isEmpty()) {
-            navLabel(g, Component.translatable("gottschbooks.book.back"), bookX + 4, y, NAV_BACK, mouseX, mouseY);
+            Component back = Component.translatable("gottschbooks.book.back");
+            navLabel(g, back, left, y, NAV_BACK, mouseX, mouseY);
+            left += font.width(back) + 12;
+        }
+        if (bookmarkEntry() != null) {
+            boolean marked = bookmarkHere().isPresent();
+            // a book with every ribbon used offers only to remove one
+            if (marked || ReadingLog.bookmarks(bookId).size() < ReadingLog.MAX_BOOKMARKS) {
+                navLabel(g, Component.translatable(marked ? "gottschbooks.book.unbookmark" : "gottschbooks.book.bookmark"),
+                        left, y, NAV_BOOKMARK, mouseX, mouseY);
+            }
+        }
+        int right = bookX + bookW - 4;
+        if (!isManual()) {
+            // a lore book's chapter list, from anywhere but its own pages
+            if (hasContents() && view != viewOf(pageOfBlock(-1))) {
+                Component contents = Component.translatable("gottschbooks.book.contents");
+                navLabel(g, contents, right - font.width(contents), y, NAV_CONTENTS, mouseX, mouseY);
+            }
+            return;
         }
         if (entry != null) {
             Component contents = Component.translatable("gottschbooks.book.contents");
-            navLabel(g, contents, bookX + bookW - 4 - font.width(contents), y, NAV_CONTENTS, mouseX, mouseY);
+            right -= font.width(contents);
+            navLabel(g, contents, right, y, NAV_CONTENTS, mouseX, mouseY);
+            right -= 12;
+        }
+        if (!SEARCH.equals(entry)) {
+            Component search = Component.translatable("gottschbooks.book.search");
+            navLabel(g, search, right - font.width(search), y, NAV_SEARCH, mouseX, mouseY);
         }
     }
 
@@ -988,10 +1498,15 @@ public class BookScreen extends Screen {
                 case SPOTLIGHT -> drawSpotlight(g, line, x, y);
                 case RECIPE -> drawRecipe(g, line.recipe, x, y);
                 case IMAGE -> drawImage(g, line.image, x, y);
-                case ENTITY -> drawEntity(g, line.entity, x, y, line.height);
+                case ENTITY -> drawEntity(g, line, x, y);
                 case TABLE_HEADER, TABLE_ROW -> drawTableRow(g, line, x, y);
                 case CATEGORY -> drawRow(g, line, x, y, true, mouseX, mouseY);
                 case LINK_ROW -> drawRow(g, line, x, y, false, mouseX, mouseY);
+                case SEARCH_BOX -> {
+                    // the search box's frame: a faint shade with an ink outline, like a recipe's slots
+                    g.fill(x, y, x + textW, y + SEARCH_BOX_H, 0x18000000);
+                    g.renderOutline(x, y, textW, SEARCH_BOX_H, NOTE & 0x80FFFFFF);
+                }
                 case BLANK, BREAK -> { }
             }
             y += line.height;
@@ -1116,13 +1631,19 @@ public class BookScreen extends Screen {
         } else {
             label = Component.empty().withStyle(ChatFormatting.BOLD).append(label);
         }
-        String shown = font.plainSubstrByWidth(label.getString(), textW - (textX - x));
+        String shown = font.plainSubstrByWidth(label.getString(), textW - (textX - x) - (line.fresh ? NEW_MARK_ROOM : 0));
         Component text = Component.literal(shown).withStyle(label.getStyle());
         if (hover) {
             text = text.copy().withStyle(ChatFormatting.UNDERLINE);
         }
-        drawText(g, (heading ? Component.empty().withStyle(ChatFormatting.BOLD).append(shown) : text).getVisualOrderText(),
-                textX, y + (ROW_H - 8) / 2 + 1, hover ? LINK : INK);
+        Component drawn = heading ? Component.empty().withStyle(ChatFormatting.BOLD).append(shown) : text;
+        drawText(g, drawn.getVisualOrderText(), textX, y + (ROW_H - 8) / 2 + 1, hover ? LINK : INK);
+        if (line.fresh) {
+            // a small round dot after the name
+            int dx = textX + font.width(drawn) + 3, dy = y + ROW_H / 2 - 1;
+            g.fill(dx + 1, dy, dx + 3, dy + 4, NEW_MARK);
+            g.fill(dx, dy + 1, dx + 4, dy + 3, NEW_MARK);
+        }
     }
 
     private void drawIllustration(GuiGraphics g, Line line, int x, int y) {
@@ -1235,19 +1756,44 @@ public class BookScreen extends Screen {
                 image.texW(), image.texH());
     }
 
-    private void drawEntity(GuiGraphics g, LivingEntity entity, int x, int y, int height) {
-        float size = Math.max(entity.getBbHeight(), entity.getBbWidth());
-        int scale = (int) Math.max(8, (height - 14) / Math.max(1F, size));
-        int x1 = x + textW / 2 - 30, x2 = x + textW / 2 + 30;
-        // a slow turn, so the whole mob shows
+    /**
+     * the mob, its model's height (or its width, if wider) filling the line at scale 1 and its lowest point 5 px above
+     * the line's floor; the author's scale shrinks it further
+     */
+    private void drawEntity(GuiGraphics g, Line line, int x, int y) {
+        LivingEntity entity = line.entity;
+        if (line.model == null) {
+            line.model = ModelHeight.of(entity);
+        }
+        float size = Math.max(line.model.span(), entity.getBbWidth());
+        int scale = (int) Math.max(8, (line.height - 14) * line.scale / Math.max(1F, size));
+        int y1 = y + 2, y2 = y + line.height - 2;
+        // the renderer stands the hitbox's middle on the box's middle; this moves it so the model stands on the floor
+        float feet = y2 - 5 + line.model.bottom() * scale - (y1 + y2) / 2F;
+        float yOffset = (feet / scale - entity.getBbHeight() / 2F / entity.getScale());
+        // a slow turn, so the whole mob shows; the box is the line's width, so arms and wings aren't cut
         float angle = (float) Math.sin(System.currentTimeMillis() / 1500.0) * 1.5F;
-        InventoryScreen.renderEntityInInventoryFollowsAngle(g, x1, y + 2, x2, y + height - 2, scale, 0.0625F, angle, 0F, entity);
+        InventoryScreen.renderEntityInInventoryFollowsAngle(g, x, y1, x + textW, y2, scale, yOffset, angle, 0F, entity);
     }
 
     /** the items' tooltips, over everything else */
     @Override
     public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
         super.render(g, mouseX, mouseY, partialTick);
+        for (TabHit tab : tabHits) {
+            if (tab.contains(mouseX, mouseY)) {
+                ReadingLog.Bookmark mark = tab.mark();
+                Component where = isManual() ? manual.entry(mark.entry()).map(Manual.Entry::title).orElse(title) : title;
+                List<Component> lines = new ArrayList<>();
+                lines.add(where);
+                if (!mark.text().isEmpty()) {
+                    lines.add(Component.literal(mark.text()).withStyle(ChatFormatting.GRAY));
+                }
+                lines.add(Component.translatable("gottschbooks.book.bookmark.remove").withStyle(ChatFormatting.DARK_GRAY));
+                g.renderComponentTooltip(font, lines, mouseX, mouseY);
+                return;
+            }
+        }
         for (ItemHit hit : itemHits) {
             if (hit.contains(mouseX, mouseY)) {
                 g.renderTooltip(font, hit.item(), mouseX, mouseY);
